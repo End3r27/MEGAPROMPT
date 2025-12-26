@@ -29,6 +29,37 @@ class CodebaseStructure(BaseModel):
     )
     has_cli: bool = Field(default=False, description="Whether CLI is present")
     has_api: bool = Field(default=False, description="Whether API endpoints are present")
+    has_docker: bool = Field(default=False, description="Whether Dockerfile is present")
+    has_entrypoint: bool = Field(
+        default=False, description="Whether Dockerfile has ENTRYPOINT or CMD"
+    )
+    has_source_code: bool = Field(
+        default=False, description="Whether source code files exist beyond config"
+    )
+    has_readme: bool = Field(default=False, description="Whether README exists")
+    file_count: int = Field(default=0, description="Total number of source files")
+
+
+class ProjectIntent(BaseModel):
+    """Classified intent of the project."""
+
+    intent_type: str = Field(
+        description="Intent type: executable_utility, base_image, runtime_environment, build_image, library_image, template, scaffold, unknown"
+    )
+    confidence: str = Field(
+        description="Confidence level: high, medium, low"
+    )
+    reasoning: str = Field(
+        description="Why this intent was classified (heuristics + AI reasoning)"
+    )
+    is_minimal: bool = Field(
+        default=False,
+        description="Whether this appears to be an intentionally minimal/foundational project",
+    )
+    maturity_level: str = Field(
+        default="unknown",
+        description="Project maturity: foundation, template, prototype, production, unknown",
+    )
 
 
 class ArchitecturalInference(BaseModel):
@@ -77,6 +108,14 @@ class SystemGap(BaseModel):
     rationale: str = Field(description="Why this system is needed")
     evidence_searched: list[str] = Field(
         default_factory=list, description="What we searched for as evidence"
+    )
+    confidence: str = Field(
+        default="medium",
+        description="Confidence level: high, medium, low - how certain we are this is actually missing vs intentional",
+    )
+    may_be_intentional: bool = Field(
+        default=False,
+        description="Whether this gap may be intentional given the project intent",
     )
 
 
@@ -127,8 +166,11 @@ class AnalysisReport(BaseModel):
     """Complete analysis report."""
 
     structure: CodebaseStructure
+    intent: ProjectIntent
     inference: ArchitecturalInference
     holes: SystemHoles
     enhancements: Enhancements
-    intent_drift: Optional[IntentDrift] = Field(default=None, description="Intent drift if original prompt provided")
+    intent_drift: Optional[IntentDrift] = Field(
+        default=None, description="Intent drift if original prompt provided"
+    )
 

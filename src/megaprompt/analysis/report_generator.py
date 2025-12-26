@@ -34,6 +34,8 @@ class ReportGenerator:
 **Project Type:** {project_type}
 **Architectural Style:** {architectural_style}
 **Dominant Patterns:** {patterns}
+**Project Intent:** {intent_type}
+**Maturity Level:** {maturity_level}
 
 ## Critical System Holes
 
@@ -76,21 +78,45 @@ class ReportGenerator:
         Returns:
             Formatted markdown string
         """
-        # Format missing systems
+        # Add intentional minimalism warning if applicable
+        minimalism_warning = ""
+        if report.intent.is_minimal:
+            minimalism_warning = f"""
+## ⚠️ Intentional Minimalism Detected
+
+This project appears to be intentionally minimal ({report.intent.intent_type}, {report.intent.maturity_level} maturity). 
+Several systems may be missing by design rather than oversight.
+
+**Project Intent**: {report.intent.intent_type} ({report.intent.confidence} confidence)
+**Maturity Level**: {report.intent.maturity_level}
+**Reasoning**: {report.intent.reasoning}
+
+If this project is intended as a base image, template, scaffold, or foundational layer, 
+many "missing" systems are valid omissions and not defects.
+
+---
+
+"""
+
+        # Format missing systems with confidence and intentional flags
         missing_lines = []
         for gap in report.holes.missing:
             priority_icon = "🔴" if gap.priority == "critical" else "🟠" if gap.priority == "high" else "🟡"
+            confidence_icon = "✓" if gap.confidence == "high" else "~" if gap.confidence == "medium" else "?"
+            intentional_note = " *(may be intentional)*" if gap.may_be_intentional else ""
             missing_lines.append(
-                f"- {priority_icon} **{gap.system}** ({gap.category}, {gap.priority} priority)\n"
+                f"- {priority_icon} **{gap.system}** ({gap.category}, {gap.priority} priority, {confidence_icon} {gap.confidence} confidence){intentional_note}\n"
                 f"  - {gap.rationale}"
             )
         missing_systems_text = "\n".join(missing_lines) if missing_lines else "None identified"
 
-        # Format partial systems
+        # Format partial systems with confidence
         partial_lines = []
         for gap in report.holes.partial:
+            confidence_icon = "✓" if gap.confidence == "high" else "~" if gap.confidence == "medium" else "?"
+            intentional_note = " *(may be intentional)*" if gap.may_be_intentional else ""
             partial_lines.append(
-                f"- ⚠️ **{gap.system}** ({gap.category}, {gap.priority} priority)\n"
+                f"- ⚠️ **{gap.system}** ({gap.category}, {gap.priority} priority, {confidence_icon} {gap.confidence} confidence){intentional_note}\n"
                 f"  - {gap.rationale}\n"
                 f"  - Evidence searched: {', '.join(gap.evidence_searched[:5])}"
             )
@@ -133,7 +159,7 @@ class ReportGenerator:
         patterns_text = ", ".join(report.inference.dominant_patterns) if report.inference.dominant_patterns else "None identified"
 
         # Generate report using template
-        report_text = self.markdown_template.format(
+        report_text = minimalism_warning + self.markdown_template.format(
             project_type=report.inference.project_type,
             architectural_style=report.inference.architectural_style or "Not specified",
             patterns=patterns_text,

@@ -5,11 +5,15 @@ from pathlib import Path
 
 from megaprompt.core.llm_base import LLMClientBase
 from megaprompt.core.validator import validate_schema
-from megaprompt.schemas.analysis import ArchitecturalInference, ExpectedSystems
+from megaprompt.schemas.analysis import (
+    ArchitecturalInference,
+    ExpectedSystems,
+    ProjectIntent,
+)
 
 
 class ExpectedSystemsGenerator:
-    """Generates canonical system checklist based on project type."""
+    """Generates canonical system checklist based on project type and intent."""
 
     def __init__(self, llm_client: LLMClientBase):
         """
@@ -28,12 +32,15 @@ class ExpectedSystemsGenerator:
         )
         return template_path.read_text(encoding="utf-8")
 
-    def generate(self, inference: ArchitecturalInference) -> ExpectedSystems:
+    def generate(
+        self, inference: ArchitecturalInference, intent: ProjectIntent
+    ) -> ExpectedSystems:
         """
-        Generate expected systems for the project type.
+        Generate expected systems for the project type and intent.
 
         Args:
             inference: ArchitecturalInference from previous stage
+            intent: ProjectIntent from intent classifier
 
         Returns:
             Validated ExpectedSystems model
@@ -43,6 +50,9 @@ class ExpectedSystemsGenerator:
             project_type=inference.project_type,
             patterns=", ".join(inference.dominant_patterns),
             architectural_style=inference.architectural_style,
+            intent_type=intent.intent_type,
+            is_minimal=str(intent.is_minimal).lower(),
+            maturity_level=intent.maturity_level,
         )
 
         # Call LLM

@@ -7,6 +7,8 @@ from megaprompt.core.llm_base import LLMClientBase
 from megaprompt.schemas.analysis import (
     CodebaseStructure,
     ExpectedSystems,
+    ProjectIntent,
+    SystemExpectation,
     SystemGap,
     SystemHoles,
 )
@@ -25,7 +27,10 @@ class PresenceMatrix:
         self.llm_client = llm_client
 
     def analyze(
-        self, structure: CodebaseStructure, expected: ExpectedSystems
+        self,
+        structure: CodebaseStructure,
+        expected: ExpectedSystems,
+        intent: ProjectIntent,
     ) -> SystemHoles:
         """
         Analyze codebase to find missing and partial systems.
@@ -119,4 +124,63 @@ class PresenceMatrix:
                 )
 
         return SystemHoles(missing=missing, partial=partial, present=present)
+
+    def _assess_confidence(
+        self,
+        system_expectation: "SystemExpectation",
+        structure: CodebaseStructure,
+        intent: ProjectIntent,
+        evidence_found: list[str],
+    ) -> tuple[str, bool]:
+        """
+        Assess confidence that a missing system is actually missing vs intentional.
+
+        Args:
+            system_expectation: The expected system
+            structure: Codebase structure
+            intent: Project intent
+            evidence_found: Evidence found (empty list for missing)
+
+        Returns:
+            Tuple of (confidence_level, may_be_intentional)
+        """
+        # If project is minimal or foundational, many "missing" systems may be intentional
+        if intent.is_minimal:
+            # For minimal projects, executable systems are likely intentional omissions
+            executable_categories = {
+                "lifecycle",
+                "observability",
+                "performance",
+                "testing",
+            }
+            if system_expectation.category in executable_categories:
+                return "low", True
+
+            # Entry points, CLI, API are definitely intentional for base images/templates
+            if system_expectation.category == "tooling" and intent.intent_type in (
+                "base_image",
+                "template",
+                "scaffold",
+            ):
+                return "low", True
+
+        # If no source code exists, most systems are N/A, not missing
+        if not structure.has_source_code and system_expectation.category != "tooling":
+            return "low", True
+
+        # If no entrypoint and system requires execution, likely intentional
+        if not structure.has_entrypoint and intent.intent_type in (
+            "base_image",
+            "runtime_environment",
+        ):
+            if system_expectation.category in ("lifecycle", "error_handling"):
+                return "low", True
+
+        # High confidence for missing systems in executable utilities
+        if intent.intent_type == "executable_utility" and structure.has_source_code:
+            if len(evidence_found) == 0:
+                return "high", False
+
+        # Medium confidence by default
+        return "medium", False
 

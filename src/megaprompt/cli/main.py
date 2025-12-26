@@ -32,6 +32,7 @@ def main():
     deterministic mega-prompts optimized for AI execution.
     
     Supported LLM Providers:
+      - OpenRouter (access to many models, requires OPENROUTER_API_KEY)
       - Ollama (local, requires running Ollama server)
       - Qwen AI (DashScope API, requires QWEN_API_KEY)
       - Google AI Gemini (free tier, requires GEMINI_API_KEY, auto-opens browser if missing)
@@ -53,7 +54,7 @@ def main():
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["ollama", "qwen", "gemini", "auto"], case_sensitive=False),
+    type=click.Choice(["ollama", "qwen", "gemini", "openrouter", "auto"], case_sensitive=False),
     default="auto",
     help="LLM provider (default: auto - auto-detect)",
 )
@@ -771,7 +772,7 @@ def _process_batch(
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["ollama", "qwen", "gemini", "auto"], case_sensitive=False),
+    type=click.Choice(["ollama", "qwen", "gemini", "openrouter", "auto"], case_sensitive=False),
     default="auto",
     help="LLM provider (default: auto)",
 )
@@ -784,7 +785,7 @@ def _process_batch(
 @click.option(
     "--api-key",
     default=None,
-    help="API key (for Qwen or Gemini provider)",
+    help="API key (for OpenRouter, Qwen, or Gemini provider)",
 )
 @click.option(
     "--verbose/--no-verbose",

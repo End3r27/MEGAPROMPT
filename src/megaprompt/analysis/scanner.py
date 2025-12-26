@@ -43,6 +43,10 @@ class CodebaseScanner:
         has_persistence = False
         has_cli = False
         has_api = False
+        has_docker = False
+        has_entrypoint = False
+        has_readme = False
+        file_count = 0
 
         # Find all Python files
         python_files = list(codebase_path.rglob("*.py"))
@@ -146,6 +150,32 @@ class CodebaseScanner:
             matches = list(codebase_path.rglob(pattern))
             config_files.extend([str(f.relative_to(codebase_path)) for f in matches])
 
+        # Check for Docker
+        dockerfile = codebase_path / "Dockerfile"
+        if not dockerfile.exists():
+            dockerfile = codebase_path / "docker-compose.yml"
+        has_docker = dockerfile.exists()
+
+        # Check for Docker ENTRYPOINT/CMD
+        if has_docker:
+            try:
+                dockerfile_path = codebase_path / "Dockerfile"
+                if dockerfile_path.exists():
+                    dockerfile_content = dockerfile_path.read_text(encoding="utf-8")
+                    has_entrypoint = "ENTRYPOINT" in dockerfile_content or "CMD" in dockerfile_content
+            except Exception:
+                pass
+
+        # Check for README
+        readme_patterns = ["README.md", "README.txt", "README.rst", "README"]
+        for pattern in readme_patterns:
+            if (codebase_path / pattern).exists():
+                has_readme = True
+                break
+
+        # Count source files (excluding config/test files)
+        file_count = len(python_files)
+
         # Check for tests
         test_files = list(codebase_path.rglob("test_*.py"))
         test_files.extend(codebase_path.rglob("*_test.py"))
@@ -185,6 +215,11 @@ class CodebaseScanner:
             persistence=has_persistence,
             has_cli=has_cli,
             has_api=has_api,
+            has_docker=has_docker,
+            has_entrypoint=has_entrypoint,
+            has_source_code=file_count > 0,
+            has_readme=has_readme,
+            file_count=file_count,
         )
 
 

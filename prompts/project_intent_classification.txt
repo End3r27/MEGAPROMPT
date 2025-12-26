@@ -1,0 +1,37 @@
+You are classifying the intent/purpose of a codebase project.
+
+Given the following structural information, determine what kind of project this is.
+
+Codebase Structure:
+{codebase_structure}
+
+Heuristic Observations:
+{heuristics}
+
+Possible intent types:
+- executable_utility: Standalone executable tool/service (has entrypoint, CLI, or API)
+- base_image: Docker base image or foundational layer (Dockerfile but minimal/no code)
+- runtime_environment: Runtime environment setup (Python, Node, etc. environment)
+- build_image: Build/CI image with toolchains (compilers, build tools)
+- library_image: Library or dependency container (packages but no entrypoint)
+- template: Template/scaffold project (minimal code, README with instructions)
+- scaffold: Starter template (skeleton structure)
+- library: Reusable library code (modules but no entrypoints)
+- unknown: Cannot determine with confidence
+
+Return a JSON object with:
+{{
+  "intent_type": "one of the intent types above",
+  "confidence": "high, medium, or low",
+  "reasoning": "Explanation of why this intent was chosen, referencing heuristics and structure",
+  "is_minimal": true/false,
+  "maturity_level": "foundation, template, prototype, production, or unknown"
+}}
+
+Important guidelines:
+- If heuristics suggest base_image, template, or scaffold, mark is_minimal as true
+- If project has no executable code and no entrypoint, likely base_image or template
+- If project has executable code AND entrypoint, likely executable_utility
+- Maturity: foundation = base layer, template = starter code, prototype = working but incomplete, production = complete system
+- Be conservative: if uncertain, use "unknown" with low confidence
+

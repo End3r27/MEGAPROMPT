@@ -5,6 +5,7 @@ from typing import Optional
 
 from megaprompt.analysis.enhancement_generator import EnhancementGenerator
 from megaprompt.analysis.inference import ArchitecturalInferrer
+from megaprompt.analysis.intent_classifier import IntentClassifier
 from megaprompt.analysis.intent_drift import IntentDriftDetector
 from megaprompt.analysis.presence_matrix import PresenceMatrix
 from megaprompt.analysis.scanner import CodebaseScanner
@@ -37,6 +38,7 @@ class AnalysisPipeline:
 
         # Initialize stages
         self.scanner = CodebaseScanner(depth=depth)
+        self.intent_classifier = IntentClassifier(llm_client)
         self.inferrer = ArchitecturalInferrer(llm_client)
         self.system_generator = ExpectedSystemsGenerator(llm_client)
         self.presence_matrix = PresenceMatrix(llm_client=None)  # No LLM for heuristic search
@@ -70,11 +72,21 @@ class AnalysisPipeline:
         if self.verbose:
             self.progress.complete_stage(
                 f"Found {len(structure.modules)} modules, {len(structure.entry_points)} entry points",
-                progress=0.2,
+                progress=0.15,
             )
-            self.progress.start_stage("2", "Inferring architecture")
+            self.progress.start_stage("2", "Classifying project intent")
 
-        # Stage 2: Architectural inference
+        # Stage 2: Intent classification (NEW - before inference)
+        intent = self.intent_classifier.classify(structure)
+
+        if self.verbose:
+            self.progress.complete_stage(
+                f"Intent: {intent.intent_type} ({intent.confidence} confidence)",
+                progress=0.25,
+            )
+            self.progress.start_stage("3", "Inferring architecture")
+
+        # Stage 3: Architectural inference
         inference = self.inferrer.infer(structure)
 
         if self.verbose:
@@ -82,42 +94,42 @@ class AnalysisPipeline:
                 f"Project type: {inference.project_type}",
                 progress=0.4,
             )
-            self.progress.start_stage("3", "Generating expected systems")
+            self.progress.start_stage("4", "Generating expected systems")
 
-        # Stage 3: Expected systems generation
-        expected = self.system_generator.generate(inference)
+        # Stage 4: Expected systems generation (now with intent)
+        expected = self.system_generator.generate(inference, intent)
 
         if self.verbose:
             self.progress.complete_stage(
                 f"Generated {len(expected.systems)} expected systems",
-                progress=0.6,
+                progress=0.55,
             )
-            self.progress.start_stage("4", "Analyzing presence/absence")
+            self.progress.start_stage("5", "Analyzing presence/absence")
 
-        # Stage 4: Presence/absence analysis
-        holes = self.presence_matrix.analyze(structure, expected)
+        # Stage 5: Presence/absence analysis (now with intent)
+        holes = self.presence_matrix.analyze(structure, expected, intent)
 
         if self.verbose:
             self.progress.complete_stage(
                 f"Found {len(holes.missing)} missing, {len(holes.partial)} partial systems",
-                progress=0.75,
+                progress=0.7,
             )
-            self.progress.start_stage("5", "Generating enhancements")
+            self.progress.start_stage("6", "Generating enhancements")
 
-        # Stage 5: Enhancement generation
+        # Stage 6: Enhancement generation
         enhancements = self.enhancement_generator.generate(structure, inference, holes)
 
         if self.verbose:
             self.progress.complete_stage(
                 f"Generated {len(enhancements.enhancements)} enhancement suggestions",
-                progress=0.9,
+                progress=0.85,
             )
 
-        # Stage 6: Intent drift (optional)
+        # Stage 7: Intent drift (optional)
         intent_drift = None
         if original_prompt_path:
             if self.verbose:
-                self.progress.start_stage("6", "Detecting intent drift")
+                self.progress.start_stage("7", "Detecting intent drift")
             intent_drift = self.intent_drift_detector.detect(structure, original_prompt_path)
             if self.verbose:
                 self.progress.complete_stage(
@@ -131,6 +143,7 @@ class AnalysisPipeline:
 
         return AnalysisReport(
             structure=structure,
+            intent=intent,
             inference=inference,
             holes=holes,
             enhancements=enhancements,

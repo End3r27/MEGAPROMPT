@@ -1,10 +1,13 @@
 You are generating a canonical checklist of systems that should exist for a given project type.
 
-Based on the inferred project type and architectural patterns, generate a list of expected systems that projects of this type typically need.
+CRITICAL: Adjust expectations based on project INTENT. A base_image or template should NOT be expected to have executable systems.
 
 Project Type: {project_type}
 Dominant Patterns: {patterns}
 Architectural Style: {architectural_style}
+Project Intent: {intent_type}
+Is Minimal: {is_minimal}
+Maturity Level: {maturity_level}
 
 Consider these system categories:
 - lifecycle: initialization, update loops, teardown
@@ -29,5 +32,13 @@ Return a JSON object with the following structure:
   ]
 }}
 
-Only include systems that make sense for this specific project type. Be specific and realistic.
+IMPORTANT RULES:
+1. If intent_type is "base_image", "template", or "scaffold", ONLY include foundational systems (security, hygiene, documentation) - NOT executable systems
+2. If is_minimal is true, be very conservative - only critical systems
+3. If maturity_level is "foundation" or "template", exclude production systems
+4. For executable_utility: include entrypoint, error handling, logging
+5. For base_image: only include security, size optimization, dependency hygiene
+6. For template: include documentation, examples, setup instructions
+
+Only include systems that make sense for this specific project type AND intent. Be specific and realistic.
 

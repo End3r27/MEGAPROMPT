@@ -8,6 +8,7 @@ import requests
 from megaprompt.core.llm_base import LLMClientBase
 from megaprompt.core.gemini_client import GeminiClient
 from megaprompt.core.llm_client import OllamaClient
+from megaprompt.core.openrouter_client import OpenRouterClient
 from megaprompt.core.qwen_client import QwenClient
 
 
@@ -49,6 +50,16 @@ def check_gemini_available() -> bool:
     return bool(os.getenv("GEMINI_API_KEY"))
 
 
+def check_openrouter_available() -> bool:
+    """
+    Check if OpenRouter API is available (has API key).
+
+    Returns:
+        True if OPENROUTER_API_KEY is set, False otherwise
+    """
+    return bool(os.getenv("OPENROUTER_API_KEY"))
+
+
 def create_client(
     provider: str = "auto",
     model: Optional[str] = None,
@@ -61,12 +72,12 @@ def create_client(
     Create an LLM client for the specified provider.
 
     Args:
-        provider: Provider name ("ollama", "qwen", "gemini", or "auto")
+        provider: Provider name ("ollama", "qwen", "gemini", "openrouter", or "auto")
         model: Model name (provider-specific)
         temperature: Generation temperature
         seed: Random seed for determinism
         base_url: Base URL (provider-specific, not used for Gemini)
-        api_key: API key (for Qwen or Gemini)
+        api_key: API key (for Qwen, Gemini, or OpenRouter)
 
     Returns:
         LLM client instance
@@ -76,8 +87,10 @@ def create_client(
         ImportError: If required packages are not installed
     """
     if provider == "auto":
-        # Auto-detect: prefer Qwen if available, then Gemini, then Ollama
-        if check_qwen_available():
+        # Auto-detect: prefer OpenRouter if available, then Qwen, then Gemini, then Ollama
+        if check_openrouter_available():
+            provider = "openrouter"
+        elif check_qwen_available():
             provider = "qwen"
         elif check_gemini_available():
             provider = "gemini"
@@ -86,7 +99,7 @@ def create_client(
         else:
             raise ValueError(
                 "No LLM provider available. "
-                "Set QWEN_API_KEY for Qwen, GEMINI_API_KEY for Gemini, or ensure Ollama is running."
+                "Set OPENROUTER_API_KEY for OpenRouter, QWEN_API_KEY for Qwen, GEMINI_API_KEY for Gemini, or ensure Ollama is running."
             )
 
     if provider == "ollama":
@@ -130,8 +143,23 @@ def create_client(
             seed=seed,
         )
 
+    elif provider == "openrouter":
+        if not check_openrouter_available() and not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable is required for OpenRouter provider. "
+                "Set it or pass api_key parameter. "
+                "Get your API key from: https://openrouter.ai/keys"
+            )
+        return OpenRouterClient(
+            api_key=api_key,
+            base_url=base_url,
+            model=model or "xiaomi/mimo-v2-flash:free",
+            temperature=temperature,
+            seed=seed,
+        )
+
     else:
         raise ValueError(
-            f"Unknown provider: {provider}. Supported providers: ollama, qwen, gemini, auto"
+            f"Unknown provider: {provider}. Supported providers: ollama, qwen, gemini, openrouter, auto"
         )
 

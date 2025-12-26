@@ -38,6 +38,7 @@ pip install -e .
 
 - Python 3.10+
 - **One of the following LLM providers:**
+  - **OpenRouter**: Access to many models (GPT-4, Claude, Gemini, etc.) - API key from https://openrouter.ai/keys (set `OPENROUTER_API_KEY`)
   - **Ollama**: Running locally at `http://localhost:11434` (or set `OLLAMA_BASE_URL`)
   - **Qwen AI**: API key from Alibaba Cloud DashScope (set `QWEN_API_KEY`)
   - **Google AI Gemini**: Free API key from Google AI Studio (set `GEMINI_API_KEY`)
@@ -99,15 +100,15 @@ The analysis pipeline:
 
 ### Generate Command Options
 
-- `--provider/-p`: LLM provider - `ollama`, `qwen`, `gemini`, or `auto` (default: `auto` - auto-detects available provider)
+- `--provider/-p`: LLM provider - `openrouter`, `ollama`, `qwen`, `gemini`, or `auto` (default: `auto` - auto-detects available provider)
 - `--output/-o`: Output file (default: stdout)
-- `--model/-m`: Model name (provider-specific defaults: Ollama: `llama3.1`, Qwen: `qwen-plus`, Gemini: `gemini-2.5-flash`)
+- `--model/-m`: Model name (provider-specific defaults: OpenRouter: `xiaomi/mimo-v2-flash:free`, Ollama: `llama3.1`, Qwen: `qwen-plus`, Gemini: `gemini-2.5-flash`)
 - `--temperature/-t`: Temperature (default: 0 for determinism)
 - `--seed/-s`: Random seed for determinism
 - `--verbose/-v`: Show intermediate stage outputs
 - `--format/-f`: Output format: `markdown`, `json`, or `yaml`
 - `--base-url`: Base URL (provider-specific, not used for Gemini)
-- `--api-key`: API key for Qwen or Gemini provider (or use `QWEN_API_KEY`/`GEMINI_API_KEY` env var)
+- `--api-key`: API key for OpenRouter, Qwen, or Gemini provider (or use `OPENROUTER_API_KEY`/`QWEN_API_KEY`/`GEMINI_API_KEY` env var)
 - `--augment`: Path to missing systems JSON file to augment the prompt with (from `analyze --export`)
 
 ### Analyze Command Options
@@ -125,6 +126,41 @@ The analysis pipeline:
 - `--verbose/-v`: Show progress (default: enabled)
 
 ## Environment Variables
+
+### Setting API Keys
+
+You can set API keys as environment variables:
+
+**Linux/Mac:**
+```bash
+export OPENROUTER_API_KEY="your-api-key-here"
+export QWEN_API_KEY="your-api-key-here"
+export GEMINI_API_KEY="your-api-key-here"
+```
+
+**Windows PowerShell:**
+```powershell
+$env:OPENROUTER_API_KEY="your-api-key-here"
+$env:QWEN_API_KEY="your-api-key-here"
+$env:GEMINI_API_KEY="your-api-key-here"
+```
+
+**Windows CMD:**
+```cmd
+set OPENROUTER_API_KEY=your-api-key-here
+set QWEN_API_KEY=your-api-key-here
+set GEMINI_API_KEY=your-api-key-here
+```
+
+### OpenRouter Provider
+
+- `OPENROUTER_API_KEY`: OpenRouter API key (required for OpenRouter provider)
+  - Get your API key from: https://openrouter.ai/keys
+  - OpenRouter provides access to many models: GPT-4, Claude, Gemini, Llama, and more
+- `OPENROUTER_API_BASE`: OpenRouter API base URL (default: `https://openrouter.ai/api/v1`)
+- `OPENROUTER_MODEL`: Default OpenRouter model (default: `xiaomi/mimo-v2-flash:free`)
+  - Browse all available models: https://openrouter.ai/models
+  - Popular models: `openai/gpt-4o`, `anthropic/claude-3.5-sonnet`, `google/gemini-2.0-flash-exp`
 
 ### Ollama Provider
 - `OLLAMA_BASE_URL`: Ollama API base URL (default: `http://localhost:11434`)
@@ -161,12 +197,33 @@ The analysis pipeline:
 The tool supports auto-detection of available providers:
 
 - **Auto mode** (default): Automatically selects the first available provider:
-  1. Checks for `QWEN_API_KEY` → uses Qwen
-  2. Checks for `GEMINI_API_KEY` → uses Gemini
-  3. Checks if Ollama is running → uses Ollama
-  4. Raises error if none are available
+  1. Checks for `OPENROUTER_API_KEY` → uses OpenRouter
+  2. Checks for `QWEN_API_KEY` → uses Qwen
+  3. Checks for `GEMINI_API_KEY` → uses Gemini
+  4. Checks if Ollama is running → uses Ollama
+  5. Raises error if none are available
 
-- **Manual selection**: Use `--provider ollama`, `--provider qwen`, or `--provider gemini` to force a specific provider
+- **Manual selection**: Use `--provider openrouter`, `--provider ollama`, `--provider qwen`, or `--provider gemini` to force a specific provider
+
+### OpenRouter Setup
+
+1. Get an API key from [OpenRouter](https://openrouter.ai/keys)
+2. Set the environment variable:
+   ```bash
+   export OPENROUTER_API_KEY="your-api-key-here"
+   ```
+3. Use OpenRouter provider:
+   ```bash
+   megaprompt generate input.txt --provider openrouter --model xiaomi/mimo-v2-flash:free
+   ```
+   
+   Or let auto-detection find it:
+   ```bash
+   megaprompt generate input.txt  # Auto-detects OpenRouter if OPENROUTER_API_KEY is set
+   ```
+
+4. Browse available models at https://openrouter.ai/models
+   - Popular models: `openai/gpt-4o`, `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`, `google/gemini-2.0-flash-exp`
 
 ### Qwen AI Setup
 
@@ -299,21 +356,22 @@ The analysis system uses a 4-phase pipeline:
    - Data models (Pydantic, dataclasses)
    - Config files, tests, persistence patterns
 
-2. **Architectural Inference** (AI): Determines project type and patterns
+2. **Intent Classification** (AI): Classifies project intent (executable_utility, base_image, template, etc.)
+3. **Architectural Inference** (AI): Determines project type and patterns
    - Infers project type (e.g., "agent-based simulation", "web API")
    - Identifies dominant patterns and implicit assumptions
    - Detects frameworks and architectural style
 
-3. **Expected Systems Generator** (AI): Generates canonical system checklist
+4. **Expected Systems Generator** (AI): Generates canonical system checklist (contextual to intent)
    - Maps project types to expected system categories
    - Categories: lifecycle, persistence, error_handling, observability, performance, tooling, testing, extensibility, safety
 
-4. **Presence/Absence Matrix** (Logic + AI): Compares expected vs actual
+5. **Presence/Absence Matrix** (Logic + AI): Compares expected vs actual with confidence weighting
    - Identifies missing systems
    - Detects partially implemented systems
    - Generates enhancement suggestions aligned with architecture
 
-5. **Intent Drift Detection** (AI, optional): Compares original design to implementation
+6. **Intent Drift Detection** (AI, optional): Compares original design to implementation
    - Detects discrepancies between original intent and current state
    - Reports severity of drift items
 
