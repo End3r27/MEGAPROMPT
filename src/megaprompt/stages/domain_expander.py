@@ -57,6 +57,16 @@ class DomainExpander:
         # Extract JSON
         json_data = self.llm_client.extract_json(response)
 
-        # Validate and return
-        return validate_schema(json_data, DomainExpansion)
+        # Validate and return (with retry on validation failure)
+        try:
+            return validate_schema(
+                json_data,
+                DomainExpansion,
+                llm_client=self.llm_client,
+                original_prompt=prompt,
+                max_retries=1,
+            )
+        except ValueError:
+            # If retry also fails, re-raise with original error
+            return validate_schema(json_data, DomainExpansion)
 
