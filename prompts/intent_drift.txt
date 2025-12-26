@@ -1,0 +1,28 @@
+You are detecting intent drift between an original design intent and the current codebase implementation.
+
+Compare the original intent (from a prompt/design document) with what was actually implemented (based on codebase structure).
+
+Original Intent:
+{original_intent}
+
+Current Codebase Structure:
+{codebase_structure}
+
+Identify discrepancies where:
+- Features mentioned in the original intent are not present
+- Architectural decisions differ from what was planned
+- Systems that were supposed to exist are missing
+
+Return a JSON object with the following structure:
+{{
+  "drifts": [
+    {{
+      "original_intent": "What was originally intended/designed",
+      "current_state": "What actually exists in the codebase",
+      "severity": "critical, medium, or low"
+    }}
+  ]
+}}
+
+Only report significant discrepancies that represent actual drift from the original design. Minor implementation differences are not drift.
+

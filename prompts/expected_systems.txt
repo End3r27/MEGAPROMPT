@@ -1,0 +1,33 @@
+You are generating a canonical checklist of systems that should exist for a given project type.
+
+Based on the inferred project type and architectural patterns, generate a list of expected systems that projects of this type typically need.
+
+Project Type: {project_type}
+Dominant Patterns: {patterns}
+Architectural Style: {architectural_style}
+
+Consider these system categories:
+- lifecycle: initialization, update loops, teardown
+- persistence: data storage, serialization, state management
+- error_handling: error recovery, exception handling, failure modes
+- observability: logging, monitoring, debugging tools
+- performance: profiling, optimization, caching
+- tooling: development tools, build systems, deployment
+- testing: unit tests, integration tests, test infrastructure
+- extensibility: plugin systems, configuration, modularity
+- safety: validation, constraints, security
+
+Return a JSON object with the following structure:
+{{
+  "systems": [
+    {{
+      "name": "System name",
+      "category": "one of: lifecycle, persistence, error_handling, observability, performance, tooling, testing, extensibility, safety",
+      "rationale": "Why this system is expected for this project type",
+      "priority": "critical, high, medium, or low"
+    }}
+  ]
+}}
+
+Only include systems that make sense for this specific project type. Be specific and realistic.
+

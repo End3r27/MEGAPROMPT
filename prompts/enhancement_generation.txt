@@ -1,0 +1,38 @@
+You are generating enhancement suggestions for a codebase. These enhancements must fit the existing architecture and be realistic, not generic improvements.
+
+Given:
+- Codebase structure
+- Inferred architecture
+- Missing/partial systems identified
+
+Generate enhancement suggestions that:
+1. Fit naturally into the existing codebase structure
+2. Address identified gaps without rewriting existing code
+3. Are realistic and achievable
+4. Align with the project's architectural patterns
+
+Codebase Structure:
+{codebase_structure}
+
+Architecture:
+{architecture}
+
+System Holes:
+{system_holes}
+
+Return a JSON object with the following structure:
+{{
+  "enhancements": [
+    {{
+      "name": "Enhancement name",
+      "description": "What the enhancement provides",
+      "why": "Why it fits the architecture and addresses a gap",
+      "effort": "low, medium, or high",
+      "risk": "low, medium, or high",
+      "fits_existing": true or false
+    }}
+  ]
+}}
+
+Focus on system-level enhancements, not code style or refactoring. Each enhancement should be a concrete addition that makes sense given the project's intent.
+

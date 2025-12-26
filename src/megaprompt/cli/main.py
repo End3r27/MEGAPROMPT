@@ -172,6 +172,12 @@ def main():
     default=False,
     help="Skip confirmations in interactive mode",
 )
+@click.option(
+    "--augment",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    default=None,
+    help="Path to missing systems JSON file to augment the prompt with",
+)
 def generate(
     input_source: str,
     output: str | None,
@@ -195,6 +201,7 @@ def generate(
     output_dir: str | None,
     interactive: bool,
     yes: bool,
+    augment: str | None,
 ):
     """
     Generate mega-prompt from input file or stdin.
@@ -287,6 +294,42 @@ def generate(
         click.echo("Error: Input is empty", err=True)
         click.echo("  Tip: Check that the file contains text or stdin has data", err=True)
         sys.exit(1)
+
+    # Augment prompt with missing systems if provided
+    if augment:
+        try:
+            import json
+            augment_path = Path(augment)
+            if not augment_path.exists():
+                click.echo(f"Warning: Augment file not found: {augment}", err=True)
+                click.echo("  Continuing without augmentation", err=True)
+            else:
+                augment_data = json.loads(augment_path.read_text(encoding="utf-8"))
+                missing_systems = augment_data.get("missing_systems", [])
+                partial_systems = augment_data.get("partial_systems", [])
+                
+                if missing_systems or partial_systems:
+                    augmentation_text = "\n\n## Missing Systems Analysis\n\n"
+                    augmentation_text += "The following systems were identified as missing or incomplete:\n\n"
+                    
+                    if missing_systems:
+                        augmentation_text += "### Missing Systems (Critical)\n\n"
+                        for system in missing_systems:
+                            augmentation_text += f"- **{system.get('system', 'Unknown')}** ({system.get('category', 'unknown')} category, {system.get('priority', 'medium')} priority)\n"
+                            augmentation_text += f"  - {system.get('rationale', 'No rationale provided')}\n"
+                    
+                    if partial_systems:
+                        augmentation_text += "\n### Partial Systems (Needs Completion)\n\n"
+                        for system in partial_systems:
+                            augmentation_text += f"- **{system.get('system', 'Unknown')}** ({system.get('category', 'unknown')} category, {system.get('priority', 'medium')} priority)\n"
+                            augmentation_text += f"  - {system.get('rationale', 'No rationale provided')}\n"
+                    
+                    user_prompt += augmentation_text
+                    if verbose:
+                        click.echo(f"Augmented prompt with {len(missing_systems)} missing and {len(partial_systems)} partial systems", err=True)
+        except Exception as e:
+            click.echo(f"Warning: Failed to augment prompt: {e}", err=True)
+            click.echo("  Continuing without augmentation", err=True)
 
     # Setup checkpoint and cache directories
     checkpoint_path = None
@@ -677,6 +720,213 @@ def _process_batch(
         formatter.print_error("\nFailed files:")
         for result in failed:
             formatter.print_error(f"  - {Path(result['file']).name}: {result.get('error', 'Unknown error')}")
+
+
+@main.command()
+@click.argument("codebase_path", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.option(
+    "--mode",
+    type=click.Choice(["systems", "holes", "enhancements", "full"], case_sensitive=False),
+    default="full",
+    help="Analysis mode (default: full)",
+)
+@click.option(
+    "--compare-with",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    default=None,
+    help="Path to original prompt file for intent drift detection",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(writable=True),
+    default=None,
+    help="Output file (default: stdout)",
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    help="Output format (default: markdown)",
+)
+@click.option(
+    "--depth",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default="high",
+    help="Scanning depth (default: high)",
+)
+@click.option(
+    "--export",
+    type=click.Path(writable=True),
+    default=None,
+    help="Export missing systems as JSON for prompt augmentation",
+)
+@click.option(
+    "--focus",
+    default=None,
+    help="Focus analysis on specific module/system",
+)
+@click.option(
+    "--provider",
+    "-p",
+    type=click.Choice(["ollama", "qwen", "gemini", "auto"], case_sensitive=False),
+    default="auto",
+    help="LLM provider (default: auto)",
+)
+@click.option(
+    "--model",
+    "-m",
+    default=None,
+    help="Model name (provider-specific)",
+)
+@click.option(
+    "--api-key",
+    default=None,
+    help="API key (for Qwen or Gemini provider)",
+)
+@click.option(
+    "--verbose/--no-verbose",
+    "-v/--no-v",
+    default=True,
+    help="Show progress (default: enabled)",
+)
+def analyze(
+    codebase_path: str,
+    mode: str,
+    compare_with: str | None,
+    output: str | None,
+    output_format: str,
+    depth: str,
+    export: str | None,
+    focus: str | None,
+    provider: str,
+    model: str | None,
+    api_key: str | None,
+    verbose: bool,
+):
+    """
+    Analyze codebase to identify system holes, architectural risks, and enhancement opportunities.
+    
+    This command performs deep codebase analysis to detect:
+      - Missing systems that should exist for the project type
+      - Architectural risks and implicit assumptions
+      - Context-aware enhancement suggestions
+      - Intent drift (if original prompt provided)
+    
+    Examples:
+    
+      # Full analysis
+      megaprompt analyze ./project --output report.md
+      
+      # Focus on system holes only
+      megaprompt analyze ./project --mode holes
+      
+      # Compare with original design intent
+      megaprompt analyze ./project --compare-with original.prompt
+      
+      # Export missing systems for prompt augmentation
+      megaprompt analyze ./project --export missing.json
+      megaprompt generate idea.txt --augment missing.json
+    """
+    from megaprompt.analysis.pipeline import AnalysisPipeline
+    from megaprompt.analysis.report_generator import ReportGenerator
+    from megaprompt.core.config import Config
+    from megaprompt.core.provider_factory import create_client
+
+    # Load configuration
+    config = Config.load()
+    
+    # Override with CLI args
+    if provider != "auto":
+        config.provider = provider
+    if model:
+        config.model = model
+    if api_key:
+        config.api_key = api_key
+
+    # Create LLM client
+    try:
+        llm_client = create_client(
+            provider=config.provider,
+            model=config.model,
+            temperature=0.0,
+            seed=None,
+            base_url=config.base_url,
+            api_key=config.api_key,
+        )
+    except Exception as e:
+        click.echo(f"Error creating LLM client: {e}", err=True)
+        sys.exit(1)
+
+    # Create analysis pipeline
+    pipeline = AnalysisPipeline(
+        llm_client=llm_client,
+        depth=depth,
+        verbose=verbose,
+    )
+
+    try:
+        # Run analysis
+        report = pipeline.analyze(
+            codebase_path=codebase_path,
+            original_prompt_path=compare_with,
+        )
+
+        # Filter by mode if needed
+        if mode != "full":
+            if mode == "holes":
+                # Only show holes
+                report.enhancements.enhancements = []
+                if report.intent_drift:
+                    report.intent_drift.drifts = []
+            elif mode == "systems":
+                # Only show systems analysis
+                report.enhancements.enhancements = []
+                if report.intent_drift:
+                    report.intent_drift.drifts = []
+            elif mode == "enhancements":
+                # Only show enhancements
+                report.holes.missing = []
+                report.holes.partial = []
+                report.holes.present = []
+                if report.intent_drift:
+                    report.intent_drift.drifts = []
+
+        # Generate report
+        generator = ReportGenerator()
+        
+        if output_format == "json":
+            report_text = generator.generate_json(report)
+        else:
+            report_text = generator.generate_markdown(report)
+
+        # Export missing systems if requested
+        if export:
+            import json
+            export_data = {
+                "missing_systems": [h.model_dump() for h in report.holes.missing],
+                "partial_systems": [h.model_dump() for h in report.holes.partial],
+            }
+            Path(export).write_text(json.dumps(export_data, indent=2), encoding="utf-8")
+            if verbose:
+                click.echo(f"Exported missing systems to: {export}", err=True)
+
+        # Write output
+        if output:
+            Path(output).write_text(report_text, encoding="utf-8")
+            if verbose:
+                click.echo(f"Analysis report written to: {output}")
+        else:
+            click.echo(report_text)
+
+    except Exception as e:
+        click.echo(f"Error during analysis: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 
 @main.command()

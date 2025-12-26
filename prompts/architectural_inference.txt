@@ -1,0 +1,23 @@
+You are analyzing a codebase structure to infer the project type, architectural patterns, and implicit assumptions.
+
+Given the following codebase structure information, determine:
+1. What type of project this is
+2. What architectural patterns dominate
+3. What implicit assumptions are made in the design
+4. What frameworks are being used
+5. The overall architectural style
+
+Codebase Structure:
+{codebase_structure}
+
+Return a JSON object with the following structure:
+{{
+  "project_type": "description of project type (e.g., 'agent-based simulation', 'web api', 'CLI tool', 'data processing pipeline')",
+  "dominant_patterns": ["pattern1", "pattern2", ...],
+  "implicit_assumptions": ["assumption1", "assumption2", ...],
+  "detected_frameworks": ["framework1", "framework2", ...],
+  "architectural_style": "style description (e.g., 'monolithic', 'microservices', 'layered', 'event-driven')"
+}}
+
+Focus on architectural insights, not code quality. Identify what the codebase IS, not what it should be.
+
