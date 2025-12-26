@@ -724,7 +724,7 @@ def _process_batch(
 
 
 @main.command()
-@click.argument("codebase_path", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument("codebase_path", type=click.Path(exists=False, file_okay=False, dir_okay=True, resolve_path=True))
 @click.option(
     "--mode",
     type=click.Choice(["systems", "holes", "enhancements", "full"], case_sensitive=False),
@@ -733,9 +733,9 @@ def _process_batch(
 )
 @click.option(
     "--compare-with",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=False, file_okay=True, dir_okay=False, resolve_path=True),
     default=None,
-    help="Path to original prompt file for intent drift detection",
+    help="Path to original prompt file for intent drift detection (can be absolute or relative)",
 )
 @click.option(
     "--output",
@@ -861,6 +861,48 @@ def analyze(
         click.echo(f"Error creating LLM client: {e}", err=True)
         sys.exit(1)
 
+    # Validate codebase path
+    codebase_path_obj = Path(codebase_path).expanduser().resolve()
+    
+    if not codebase_path_obj.exists():
+        click.echo(f"Error: Codebase path does not exist: {codebase_path_obj}", err=True)
+        click.echo(f"  Provided path: {codebase_path}", err=True)
+        click.echo(f"  Current directory: {Path.cwd()}", err=True)
+        
+        # Smart suggestion: if path starts with ./ and looks like it should be absolute
+        if codebase_path.startswith("./") and codebase_path.count("/") >= 2:
+            # Remove ./ and try as absolute path
+            suggested_abs = "/" + codebase_path[2:]
+            suggested_path_obj = Path(suggested_abs).expanduser().resolve()
+            if suggested_path_obj.exists():
+                click.echo(f"  Tip: Did you mean: {suggested_path_obj} (remove './' and use absolute path)?", err=True)
+            else:
+                click.echo(f"  Tip: If this should be an absolute path, try: {suggested_abs}", err=True)
+                click.echo(f"  Tip: Or use a relative path from current directory, or check the path is correct", err=True)
+        elif not Path(codebase_path).is_absolute():
+            click.echo(f"  Tip: Use absolute path (e.g., /home/user/path) or check the path is correct", err=True)
+        else:
+            click.echo(f"  Tip: Check the path is correct", err=True)
+        sys.exit(1)
+    
+    if not codebase_path_obj.is_dir():
+        click.echo(f"Error: Codebase path is not a directory: {codebase_path_obj}", err=True)
+        click.echo(f"  Tip: Provide a directory path, not a file", err=True)
+        sys.exit(1)
+    
+    # Validate compare_with path if provided
+    if compare_with:
+        compare_with_obj = Path(compare_with).expanduser().resolve()
+        if not compare_with_obj.exists():
+            click.echo(f"Error: Original prompt file does not exist: {compare_with_obj}", err=True)
+            click.echo(f"  Tip: Check the file path is correct", err=True)
+            sys.exit(1)
+        if not compare_with_obj.is_file():
+            click.echo(f"Error: Original prompt path is not a file: {compare_with_obj}", err=True)
+            click.echo(f"  Tip: Provide a file path for --compare-with", err=True)
+            sys.exit(1)
+        compare_with = str(compare_with_obj)
+
     # Create analysis pipeline
     pipeline = AnalysisPipeline(
         llm_client=llm_client,
@@ -871,7 +913,7 @@ def analyze(
     try:
         # Run analysis
         report = pipeline.analyze(
-            codebase_path=codebase_path,
+            codebase_path=str(codebase_path_obj),
             original_prompt_path=compare_with,
         )
 
@@ -905,28 +947,76 @@ def analyze(
 
         # Export missing systems if requested
         if export:
-            import json
-            export_data = {
-                "missing_systems": [h.model_dump() for h in report.holes.missing],
-                "partial_systems": [h.model_dump() for h in report.holes.partial],
-            }
-            Path(export).write_text(json.dumps(export_data, indent=2), encoding="utf-8")
-            if verbose:
-                click.echo(f"Exported missing systems to: {export}", err=True)
+            try:
+                import json
+                export_path = Path(export).expanduser().resolve()
+                export_path.parent.mkdir(parents=True, exist_ok=True)
+                export_data = {
+                    "missing_systems": [h.model_dump() for h in report.holes.missing],
+                    "partial_systems": [h.model_dump() for h in report.holes.partial],
+                }
+                export_path.write_text(json.dumps(export_data, indent=2), encoding="utf-8")
+                if verbose:
+                    click.echo(f"Exported missing systems to: {export_path}", err=True)
+            except PermissionError as e:
+                click.echo(f"Error: Cannot write to export file: {export}", err=True)
+                click.echo(f"  {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"Error exporting missing systems: {e}", err=True)
+                sys.exit(1)
 
         # Write output
         if output:
-            Path(output).write_text(report_text, encoding="utf-8")
-            if verbose:
-                click.echo(f"Analysis report written to: {output}")
+            try:
+                output_path = Path(output).expanduser().resolve()
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(report_text, encoding="utf-8")
+                if verbose:
+                    click.echo(f"Analysis report written to: {output_path}")
+            except PermissionError as e:
+                click.echo(f"Error: Cannot write to output file: {output}", err=True)
+                click.echo(f"  {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"Error writing output file: {e}", err=True)
+                sys.exit(1)
         else:
             click.echo(report_text)
 
+    except ValueError as e:
+        # Handle validation errors (e.g., path issues)
+        click.echo(f"Error: {e}", err=True)
+        if "does not exist" in str(e) or "path" in str(e).lower():
+            try:
+                resolved = Path(codebase_path).expanduser().resolve()
+                click.echo(f"  Provided path: {codebase_path}", err=True)
+                click.echo(f"  Resolved path: {resolved}", err=True)
+            except Exception:
+                click.echo(f"  Provided path: {codebase_path}", err=True)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        click.echo(f"Error: File or directory not found: {e}", err=True)
+        click.echo(f"  Provided path: {codebase_path}", err=True)
+        sys.exit(1)
+    except PermissionError as e:
+        click.echo(f"Error: Permission denied accessing path: {e}", err=True)
+        try:
+            resolved = Path(codebase_path).expanduser().resolve()
+            click.echo(f"  Path: {resolved}", err=True)
+        except Exception:
+            click.echo(f"  Path: {codebase_path}", err=True)
+        click.echo(f"  Tip: Check file permissions or run with appropriate access", err=True)
+        sys.exit(1)
     except Exception as e:
+        # Generic error handling
         click.echo(f"Error during analysis: {e}", err=True)
         if verbose:
             import traceback
+            click.echo("\nFull traceback:", err=True)
             traceback.print_exc()
+        else:
+            click.echo(f"  Tip: Run with --verbose to see full error details", err=True)
         sys.exit(1)
 
 

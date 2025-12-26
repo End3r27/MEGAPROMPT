@@ -24,14 +24,29 @@ class CodebaseScanner:
         Scan codebase and extract structural information.
 
         Args:
-            codebase_path: Path to codebase directory
+            codebase_path: Path to codebase directory (can be absolute or relative)
 
         Returns:
             CodebaseStructure with extracted information
+
+        Raises:
+            ValueError: If path does not exist or is not a directory
+            PermissionError: If path cannot be accessed
         """
-        codebase_path = Path(codebase_path)
+        # Resolve path to handle relative paths, ~ expansion, and symlinks
+        codebase_path = Path(codebase_path).expanduser().resolve()
+        
         if not codebase_path.exists():
             raise ValueError(f"Codebase path does not exist: {codebase_path}")
+        
+        if not codebase_path.is_dir():
+            raise ValueError(f"Codebase path is not a directory: {codebase_path}")
+        
+        # Check if we can read the directory
+        try:
+            codebase_path.iterdir()
+        except PermissionError as e:
+            raise PermissionError(f"Cannot read codebase directory: {codebase_path}") from e
 
         modules: list[str] = []
         entry_points: list[str] = []
