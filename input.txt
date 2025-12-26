@@ -1,0 +1,189 @@
+Corvina – Crow Magic System Blueprint
+1. Core Concept
+
+Mod Name: Corvina - Fabric 1.21.1 - Minecraft
+
+Theme: Crows as magical companions; player wields a crow staff to channel crow magic.
+
+Core Items/Entities:
+
+Crow Entity – wild and tamed variants.
+
+Corvina Staff – channels crow magic.
+
+Crow Essence – magical resource (mana equivalent).
+
+Crow Rituals – candle-based rituals amplified by nearby tamed crows.
+
+2. Entities
+a. Crow Entity
+
+Behavior:
+
+Wild: flies, perches, steals shiny items, avoids player.
+
+Tamed: follows player, perches on shoulder, assists with spells and rituals.
+
+AI Goals:
+
+this.goalSelector.add(0, new SwimGoal(this));
+this.goalSelector.add(1, new EscapeDangerGoal(this, 1.2));
+this.goalSelector.add(2, new WanderAroundGoal(this, 1.0));
+this.goalSelector.add(3, new LookAtEntityGoal(this, PlayerEntity.class, 8.0F));
+this.goalSelector.add(4, new FollowPlayerWithItemsGoal(this, 1.2, 5.0F)); // custom goal
+
+
+Taming:
+
+Use shiny items (gold nuggets, iron nuggets).
+
+Tamed crows automatically perch on player shoulders when sneaking.
+
+Drops:
+
+Crow Feather
+
+Rare: Crow Egg
+
+Chance to drop small shiny items
+
+3. Items
+a. Corvina Staff
+
+Stats:
+
+Max Crow Essence: 100 units
+
+Essence Cost per Spell: 10–30 (depending on power)
+
+Usage:
+
+Right-click: cast spell
+
+Shift + Right-click: charge for stronger spell
+
+Enhancements:
+
+Number of tamed crows increases spell power or reduces essence cost
+
+Staff can evolve visually and functionally with use
+
+b. Crow Essence
+
+Stored in staff (item NBT or capability)
+
+Obtained from:
+
+Dropped feathers
+
+Crow performing rituals
+
+Crow collecting shiny items
+
+4. Crow Magic Spells
+Spell Name	Type	Mechanics	Essence Cost
+Flock Strike	Offensive	Summons 3–5 crows to attack mobs	20
+Shadow Veil	Defensive	Temporary invisibility / stealth	15
+Item Snatch	Utility	Commands tamed crow to fetch nearby item	10
+Ritual Empower	Support	Amplifies candle ritual effects	15
+Corvine Flight	Mobility	Short glide / jump boost	20
+Dark Feather Trap	Control	Summon crows to scare mobs or block paths	25
+
+Implementation Notes:
+
+Create a CrowSpell abstract class with:
+
+cast(PlayerEntity player, int powerLevel)
+
+getEssenceCost()
+
+Spells are modular: staff checks which spell is selected and executes it.
+
+5. Ritual System
+
+Trigger: Player lights a candle while staff is equipped and a tamed crow is nearby.
+
+Effects:
+
+Particle effects (feathers, shadows)
+
+Buffs to player (night vision, luck, regeneration)
+
+Summon temporary crow minions
+
+Unlock new spells if performed correctly
+
+Optional: Ritual intensity scales with:
+
+Number of nearby tamed crows
+
+Number of candles lit
+
+Event Hook Example:
+
+@SubscribeEvent
+public void onCandleLit(PlayerInteractEvent.RightClickBlock event) {
+    if(event.getHand() == Hand.MAIN_HAND && playerHasCorvinaStaff(event.getPlayer())) {
+        if(playerHasTamedCrowNearby(event.getPlayer())) {
+            triggerCrowRitual(event.getWorld(), event.getPos(), event.getPlayer());
+        }
+    }
+}
+
+6. Visual & Audio
+
+Crow Spells: Shadow feather particles, caw sounds synced with attacks
+
+Staff: Glows when essence is full, darker feather motifs appear as it levels
+
+Rituals: Candle flame flickers differently; small flying crows particles
+
+7. Code Structure (Fabric 1.21.1)
+corvina/
+├─ src/main/java/com/rylee/corvina/
+│  ├─ entity/
+│  │  └─ CrowEntity.java
+│  ├─ item/
+│  │  └─ CorvinaStaffItem.java
+│  ├─ magic/
+│  │  ├─ CrowSpell.java
+│  │  ├─ FlockStrikeSpell.java
+│  │  └─ ShadowVeilSpell.java
+│  ├─ ritual/
+│  │  └─ CrowRitualHandler.java
+│  └─ CorvinaMod.java
+├─ resources/
+│  ├─ assets/corvina/models/entity/crow.json
+│  ├─ assets/corvina/textures/entity/crow.png
+│  ├─ assets/corvina/sounds/crow_caw.ogg
+│  └─ assets/corvina/lang/en_us.json
+
+8. Suggested Progression
+
+Implement crow entity with basic wandering AI
+
+Implement taming and shoulder logic
+
+Create the staff item and Crow Essence system
+
+Implement first spell (Flock Strike)
+
+Implement candle rituals interacting with tamed crow
+
+Add more spells and visual/audio polish
+
+Balance essence costs and spawn mechanics
+
+Staffs can be crafted from crow feathers and shiny items or earned via rituals
+
+Taming is item-based and visually/audibly communicated
+
+Crow essence balances magic use; more tamed crows reduce cost
+
+Shoulder crows follow player, assist in combat and rituals
+
+Particle and sound effects provide clear feedback
+
+Player stats (movement, cooldowns, buffs) scale with essence and magic level
+
+Time, weather, and world state modify resource availability and spell potency

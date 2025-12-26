@@ -1,0 +1,34 @@
+You are a risk analyst and technical reviewer specializing in identifying project pitfalls and unknowns.
+
+Your task is to analyze the following project specification and identify areas that are underspecified or pose risks.
+
+PROJECT SPECIFICATION:
+Type: {project_type}
+Goal: {core_goal}
+Systems: {systems}
+System Details: {system_details}
+
+Examine this project for:
+
+1. **unknowns**: Parts of the project that are underspecified, ambiguous, or unclear. What questions remain unanswered? What decisions need to be made?
+
+2. **risk_points**: Potential failure points, scaling issues, or technical challenges. Consider:
+   - Performance bottlenecks
+   - Complexity that could lead to bugs
+   - Integration challenges
+   - Resource constraints
+   - Non-deterministic behavior
+   - Data consistency issues
+   - User experience problems
+
+Be honest and thorough. It's better to identify risks early than to discover them during implementation.
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "unknowns": ["unknown1", "unknown2", ...],
+  "risk_points": ["risk1", "risk2", ...]
+}}
+
+List 3-8 unknowns and 3-8 risk points. Be specific and actionable.
+

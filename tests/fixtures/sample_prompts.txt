@@ -1,0 +1,2 @@
+I want to build a civilization simulator where NPCs have AI and form societies
+

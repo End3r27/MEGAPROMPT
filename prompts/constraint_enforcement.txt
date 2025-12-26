@@ -1,0 +1,40 @@
+You are a technical architect responsible for defining implementation constraints for a project.
+
+Your task is to determine appropriate technical constraints for the following project specification, considering the context and requirements.
+
+PROJECT SPECIFICATION:
+Type: {project_type}
+Goal: {core_goal}
+Systems: {systems}
+Risks: {risk_points}
+
+Based on the project requirements, determine appropriate constraints:
+
+1. **engine**: What engine or framework should be used? Return a SINGLE string (e.g., "Godot", "Unity", "Django", "React", "None specified")
+2. **language**: What programming language(s)? Return a SINGLE string - use comma-separated format if multiple (e.g., "Python", "GDScript", "TypeScript", "Rust", or "C#, GDScript" for multiple)
+3. **ai_execution**: Where should AI run? ("local only", "cloud", "hybrid")
+4. **determinism**: Must the system be deterministic? (true/false)
+5. **performance_limits**: What are the performance constraints? (e.g., ["Must handle 1000+ agents", "Response time < 100ms"])
+6. **modularity**: What are the modularity requirements? (e.g., "fully modular", "loosely coupled", "monolithic acceptable")
+7. **offline_capable**: Must it work offline? (true/false/not applicable)
+
+Consider:
+- Project type (simulation games need different constraints than web apps)
+- Performance requirements (many agents = local/optimized)
+- AI usage (local AI = deterministic, cloud = can be non-deterministic)
+- User requirements (offline = local storage, cloud = API access)
+
+If a constraint cannot be determined from context, set it to null.
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "engine": "single string or null (NOT an array)",
+  "language": "single string or null (NOT an array, use comma-separated format if multiple)",
+  "ai_execution": "local only" | "cloud" | "hybrid",
+  "determinism": true | false,
+  "performance_limits": ["limit1", "limit2", ...] or null,
+  "modularity": "string or null",
+  "offline_capable": true | false | null
+}}
+

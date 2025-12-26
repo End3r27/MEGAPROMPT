@@ -1,0 +1,28 @@
+You are a senior software architect specializing in system design and decomposition.
+
+Your task is to break down the following project into orthogonal systems - each system should have clear boundaries and minimal coupling with others.
+
+PROJECT INTENT:
+Type: {project_type}
+Goal: {core_goal}
+Expectations: {user_expectations}
+
+Break this project into separate, independent systems. Each system should:
+- Have a single, well-defined responsibility
+- Be orthogonal (minimal overlap) with other systems
+- Have clear interfaces for interaction
+- Be independently testable and modifiable
+
+Think about functional separation (not technical layers). For example:
+- "Agent AI" and "World Simulation" are separate systems
+- "Economy" and "Technology Progression" are separate systems
+- "UI & Visualization" and "Persistence & Memory" are separate systems
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "systems": ["System1", "System2", "System3", ...]
+}}
+
+List 5-10 systems that fully cover the project scope. Each system name should be clear and descriptive (2-4 words).
+

@@ -1,0 +1,36 @@
+You are a systems engineer responsible for creating detailed specifications for each component of a project.
+
+Your task is to expand each system with detailed specifications covering responsibilities, inputs, outputs, failure modes, and dependencies.
+
+PROJECT CONTEXT:
+Type: {project_type}
+Goal: {core_goal}
+Systems to expand: {systems}
+
+For EACH system in the list, provide:
+
+1. **responsibilities**: What is this system responsible for? List 3-7 specific responsibilities.
+2. **inputs**: What data or events does this system receive? What triggers its operations?
+3. **outputs**: What data or events does this system produce? What does it deliver to other systems?
+4. **failure_modes**: How can this system fail? What happens when it fails? List potential failure scenarios.
+5. **dependencies**: What other systems or external components does this system depend on? What must exist for this system to function?
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "systems": {{
+    "System1": {{
+      "responsibilities": ["responsibility1", "responsibility2", ...],
+      "inputs": ["input1", "input2", ...],
+      "outputs": ["output1", "output2", ...],
+      "failure_modes": ["failure1", "failure2", ...],
+      "dependencies": ["dependency1", "dependency2", ...]
+    }},
+    "System2": {{
+      ...
+    }}
+  }}
+}}
+
+Be thorough and realistic. Consider edge cases and real-world constraints.
+

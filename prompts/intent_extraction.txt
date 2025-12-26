@@ -1,0 +1,25 @@
+You are an expert at analyzing user prompts and extracting their true intent.
+
+Your task is to analyze the following user prompt and extract its core intent, removing any fluff or ambiguity.
+
+USER PROMPT:
+{user_prompt}
+
+Extract the following information:
+
+1. **project_type**: What type of project is this? (e.g., "simulation game", "web application", "data analysis tool", "mobile app")
+2. **core_goal**: What is the primary objective or goal? State it in one clear, concise sentence.
+3. **user_expectations**: List the key expectations or requirements the user has for this project. Be specific.
+4. **non_goals**: What should this project explicitly NOT do or include? (If not mentioned, leave as empty array)
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "project_type": "string",
+  "core_goal": "string",
+  "user_expectations": ["expectation1", "expectation2", ...],
+  "non_goals": ["non-goal1", "non-goal2", ...]
+}}
+
+Be precise and avoid assumptions. Focus only on what is explicitly stated or strongly implied in the prompt.
+
