@@ -179,6 +179,24 @@ def main():
     default=None,
     help="Path to missing systems JSON file to augment the prompt with",
 )
+@click.option(
+    "--log-level",
+    default="INFO",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
+    help="Logging level (default: INFO)",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    default=None,
+    help="Path to log file (default: stderr)",
+)
+@click.option(
+    "--json-logging",
+    is_flag=True,
+    default=False,
+    help="Output logs in JSON format",
+)
 def generate(
     input_source: str,
     output: str | None,
@@ -189,6 +207,9 @@ def generate(
     verbose: bool,
     output_format: str,
     base_url: str | None,
+    log_level: str,
+    log_file: str | None,
+    json_logging: bool,
     api_key: str | None,
     resume: bool,
     checkpoint_dir: str | None,
@@ -229,6 +250,10 @@ def generate(
       # Generate from stdin
       echo "Build a todo app" | megaprompt generate - -o output.md
     """
+    # Configure logging first (before other imports that might log)
+    from megaprompt.core.logging import configure_logging
+    configure_logging(level=log_level, json_output=json_logging, log_file=log_file)
+    
     # Load configuration
     cli_config = {
         "provider": provider,
@@ -793,6 +818,24 @@ def _process_batch(
     default=True,
     help="Show progress (default: enabled)",
 )
+@click.option(
+    "--log-level",
+    default="INFO",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
+    help="Logging level (default: INFO)",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    default=None,
+    help="Path to log file (default: stderr)",
+)
+@click.option(
+    "--json-logging",
+    is_flag=True,
+    default=False,
+    help="Output logs in JSON format",
+)
 def analyze(
     codebase_path: str,
     mode: str,
@@ -806,6 +849,9 @@ def analyze(
     model: str | None,
     api_key: str | None,
     verbose: bool,
+    log_level: str,
+    log_file: str | None,
+    json_logging: bool,
 ):
     """
     Analyze codebase to identify system holes, architectural risks, and enhancement opportunities.
@@ -831,6 +877,10 @@ def analyze(
       megaprompt analyze ./project --export missing.json
       megaprompt generate idea.txt --augment missing.json
     """
+    # Configure logging first
+    from megaprompt.core.logging import configure_logging
+    configure_logging(level=log_level, json_output=json_logging, log_file=log_file)
+    
     from megaprompt.analysis.pipeline import AnalysisPipeline
     from megaprompt.analysis.report_generator import ReportGenerator
     from megaprompt.core.config import Config

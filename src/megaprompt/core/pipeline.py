@@ -1,5 +1,6 @@
 """Main pipeline orchestrator."""
 
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +8,7 @@ from megaprompt.assembler.prompt_assembler import PromptAssembler
 from megaprompt.core.cache import Cache
 from megaprompt.core.checkpoint import Checkpoint, CheckpointManager
 from megaprompt.core.llm_base import LLMClientBase
+from megaprompt.core.logging import get_logger, StructuredLogger
 from megaprompt.core.progress import ProgressIndicator
 from megaprompt.core.provider_factory import create_client
 from megaprompt.schemas.assembly import MegaPrompt
@@ -53,13 +55,25 @@ class MegaPromptPipeline:
         """
         self.provider = provider
         self.model = model
-        self.llm_client: LLMClientBase = create_client(
+        
+        # Create base client
+        base_client = create_client(
             provider=provider,
             model=model,
             temperature=temperature,
             seed=seed,
             base_url=base_url,
             api_key=api_key,
+        )
+        
+        # Wrap client with logging, rate limiting, and cost tracking
+        from megaprompt.core.llm_wrapper import wrap_client_with_logging
+        actual_model = model or "default"
+        self.llm_client: LLMClientBase = wrap_client_with_logging(
+            client=base_client,
+            provider=provider,
+            model=actual_model,
+            track_costs=True,
         )
 
         # Initialize stages
@@ -83,6 +97,9 @@ class MegaPromptPipeline:
 
         # Initialize progress indicator
         self.progress = ProgressIndicator(enabled=True)
+        
+        # Initialize logger
+        self.logger: StructuredLogger = get_logger("megaprompt.pipeline")
 
     def generate(
         self,
@@ -111,6 +128,7 @@ class MegaPromptPipeline:
         expansion = None
         risk_analysis = None
         constraints = None
+        stage_timings = {}  # Track stage start times for logging
 
             # Try to resume from checkpoint
         if resume and self.checkpoint_manager:
@@ -127,6 +145,9 @@ class MegaPromptPipeline:
         try:
             # Stage 1: Intent Extraction
             if intent is None:
+                stage_timings["intent_extraction"] = time.time()
+                self.logger.log_pipeline_stage("intent_extraction", "started")
+                
                 if verbose:
                     self.progress.start_stage("1", "Extracting intent")
                     # Set initial progress for stage 1 (0-20%)
@@ -167,9 +188,17 @@ class MegaPromptPipeline:
             if verbose:
                 intermediate_outputs["intent"] = intent.model_dump()
                 self.progress.complete_stage(f"Extracted: {intent.project_type} - {intent.core_goal}", progress=0.2)
+            
+            # Log stage completion (if we started this stage)
+            if intent is not None and "intent_extraction" in stage_timings:
+                duration_ms = (time.time() - stage_timings["intent_extraction"]) * 1000
+                self.logger.log_pipeline_stage("intent_extraction", "completed", duration_ms=duration_ms)
 
             # Stage 2: Project Decomposition
             if decomposition is None:
+                stage_timings["project_decomposition"] = time.time()
+                self.logger.log_pipeline_stage("project_decomposition", "started")
+                
                 if verbose:
                     self.progress.start_stage("2", "Decomposing project into systems")
                     # Set progress for stage 2 (20-40%)
@@ -210,9 +239,17 @@ class MegaPromptPipeline:
             if verbose:
                 intermediate_outputs["decomposition"] = decomposition.model_dump()
                 self.progress.complete_stage(f"Systems: {len(decomposition.systems)} systems identified", progress=0.4)
+            
+            # Log stage completion (if we started this stage)
+            if decomposition is not None and "project_decomposition" in stage_timings:
+                duration_ms = (time.time() - stage_timings["project_decomposition"]) * 1000
+                self.logger.log_pipeline_stage("project_decomposition", "completed", duration_ms=duration_ms)
 
             # Stage 3: Domain Expansion
             if expansion is None:
+                stage_timings["domain_expansion"] = time.time()
+                self.logger.log_pipeline_stage("domain_expansion", "started")
+                
                 if verbose:
                     self.progress.start_stage("3", "Expanding system details")
                     # Set progress for stage 3 (40-60%)
@@ -259,6 +296,9 @@ class MegaPromptPipeline:
 
             # Stage 4: Risk Analysis
             if risk_analysis is None:
+                stage_timings["risk_analysis"] = time.time()
+                self.logger.log_pipeline_stage("risk_analysis", "started")
+                
                 if verbose:
                     self.progress.start_stage("4", "Analyzing risks and unknowns")
                     # Set progress for stage 4 (60-80%)
@@ -312,9 +352,18 @@ class MegaPromptPipeline:
                     f"{len(risk_analysis.risk_points)} risk points",
                     progress=0.8
                 )
+            
+            # Log stage completion (if we started this stage)
+            # Log stage completion (if we started this stage)
+            if risk_analysis is not None and "risk_analysis" in stage_timings:
+                duration_ms = (time.time() - stage_timings["risk_analysis"]) * 1000
+                self.logger.log_pipeline_stage("risk_analysis", "completed", duration_ms=duration_ms)
 
             # Stage 5: Constraint Enforcement
             if constraints is None:
+                stage_timings["constraint_enforcement"] = time.time()
+                self.logger.log_pipeline_stage("constraint_enforcement", "started")
+                
                 if verbose:
                     self.progress.start_stage("5", "Enforcing constraints")
                     # Set progress for stage 5 (80-90%)
@@ -365,14 +414,25 @@ class MegaPromptPipeline:
             if verbose:
                 intermediate_outputs["constraints"] = constraints.model_dump()
                 self.progress.complete_stage(f"Constraints: {constraints.language or 'None'} / {constraints.engine or 'None'}", progress=0.9)
+            
+            # Log stage completion (if we started this stage)
+            if constraints is not None and "constraint_enforcement" in stage_timings:
+                duration_ms = (time.time() - stage_timings["constraint_enforcement"]) * 1000
+                self.logger.log_pipeline_stage("constraint_enforcement", "completed", duration_ms=duration_ms)
 
             # Assembly: Generate final mega-prompt
+            stage_timings["assembly"] = time.time()
+            self.logger.log_pipeline_stage("assembly", "started")
+            
             if verbose:
                 self.progress.start_stage("6", "Assembling final mega-prompt")
                 self.progress.update("Combining all stages...", progress=0.95)
             mega_prompt_text = self.assembler.assemble_text(
                 intent, decomposition, expansion, risk_analysis, constraints
             )
+            
+            assembly_duration_ms = (time.time() - stage_timings["assembly"]) * 1000
+            self.logger.log_pipeline_stage("assembly", "completed", duration_ms=assembly_duration_ms)
 
             if verbose:
                 intermediate_outputs["final"] = {"status": "success"}
@@ -391,7 +451,38 @@ class MegaPromptPipeline:
                     risk_analysis=risk_analysis, constraints=constraints, error=error_msg
                 )
 
-            # Provide better error context
+            # Log error
+            log_stage_name = "unknown"
+            if intent is None:
+                log_stage_name = "intent_extraction"
+            elif decomposition is None:
+                log_stage_name = "project_decomposition"
+            elif expansion is None:
+                log_stage_name = "domain_expansion"
+            elif risk_analysis is None:
+                log_stage_name = "risk_analysis"
+            elif constraints is None:
+                log_stage_name = "constraint_enforcement"
+            else:
+                log_stage_name = "assembly"
+            
+            self.logger.log_pipeline_stage(
+                log_stage_name,
+                "failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            self.logger.error(
+                f"Pipeline error in stage {log_stage_name}",
+                context={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "provider": self.provider,
+                    "model": self.model or "default",
+                }
+            )
+            
+            # Provide better error context (for user-facing error message)
             stage_name = "unknown"
             if intent is None:
                 stage_name = "Intent Extraction (Stage 1)"

@@ -24,6 +24,10 @@ class Config:
         self.checkpoint_dir: Optional[str] = None
         self.cache_dir: Optional[str] = None
         self.template_dir: Optional[str] = None
+        # Logging configuration
+        self.log_level: str = "INFO"
+        self.log_file: Optional[str] = None
+        self.json_logging: bool = False
 
     @classmethod
     def load(cls, cli_args: Optional[dict[str, Any]] = None) -> "Config":
@@ -92,6 +96,9 @@ class Config:
             "checkpoint_dir": self.checkpoint_dir,
             "cache_dir": self.cache_dir,
             "template_dir": self.template_dir,
+            "log_level": self.log_level,
+            "log_file": self.log_file,
+            "json_logging": self.json_logging,
         }
 
     def save(self, path: Path, format: str = "yaml") -> None:
