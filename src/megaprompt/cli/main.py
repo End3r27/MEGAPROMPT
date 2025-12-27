@@ -324,7 +324,6 @@ def generate(
     # Augment prompt with missing systems if provided
     if augment:
         try:
-            import json
             augment_path = Path(augment)
             if not augment_path.exists():
                 click.echo(f"Warning: Augment file not found: {augment}", err=True)
@@ -1075,24 +1074,25 @@ def ui():
     """
     Launch interactive desktop GUI.
     
-    Opens a user-friendly desktop application with access to all MEGAPROMPT functions.
-    Features a black OLED theme with smooth rounded corners and system tray support.
+    Opens a user-friendly PyQt6 desktop application with access to all MEGAPROMPT functions.
+    Features a dark theme with vibrant red/green/yellow color scheme and rounded window edges.
     
     The GUI provides:
       - Generate mega-prompts with full configuration options
       - Batch processing for multiple files
+      - Codebase analysis
       - Configuration management
       - Checkpoint viewing and management
       - Cache statistics and management
       - Help and documentation
     """
     try:
-        from megaprompt.cli.gui_app import run_gui
+        from megaprompt.gui import run_gui
         run_gui()
     except ImportError as e:
         click.echo(
-            "Error: CustomTkinter is required for UI mode. Install it with:\n"
-            "  pip install 'megaprompt[ui]'",
+            "Error: PyQt6 is required for UI mode. Install it with:\n"
+            "  pip install 'megaprompt[gui]'",
             err=True
         )
         sys.exit(1)
