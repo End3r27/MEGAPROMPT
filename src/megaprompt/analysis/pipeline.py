@@ -37,7 +37,7 @@ class AnalysisPipeline:
         self.verbose = verbose
 
         # Initialize stages
-        self.scanner = CodebaseScanner(depth=depth)
+        self.scanner = CodebaseScanner(depth=depth, verbose=verbose)
         self.intent_classifier = IntentClassifier(llm_client)
         self.inferrer = ArchitecturalInferrer(llm_client)
         self.system_generator = ExpectedSystemsGenerator(llm_client)

@@ -1,12 +1,23 @@
 """Static code scanner for extracting structural information from codebase."""
 
 import ast
+import hashlib
 import json
+import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
+try:
+    import yaml
+except ImportError:
+    yaml = None  # yaml is optional
+
 from megaprompt.schemas.analysis import CodebaseStructure
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 class CodebaseScanner:
@@ -30,14 +41,138 @@ class CodebaseScanner:
         "svelte": [".svelte"],
     }
 
-    def __init__(self, depth: str = "high"):
+    def __init__(self, depth: str = "high", verbose: bool = False):
         """
         Initialize codebase scanner.
 
         Args:
             depth: Scanning depth: "low", "medium", "high"
+            verbose: If True, enable verbose logging
         """
         self.depth = depth
+        self.verbose = verbose
+        self.errors: list[dict[str, str]] = []  # Store errors for reporting
+        self.warnings: list[dict[str, str]] = []  # Store warnings
+        
+        # Set logging level
+        if verbose:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.WARNING)
+
+    def _process_files_parallel(
+        self, files: list[Path], codebase_path: Path, parser_func
+    ) -> list[dict | None]:
+        """
+        Process files in parallel using ThreadPoolExecutor.
+
+        Args:
+            files: List of file paths to process
+            codebase_path: Root path of the codebase
+            parser_func: Function to call for each file (file_path, codebase_path) -> dict | None
+
+        Returns:
+            List of parse results (None for failed parses)
+        """
+        if not files:
+            return []
+        
+        # For small numbers of files, sequential is faster (no overhead)
+        if len(files) < 10:
+            results = []
+            for file_path in files:
+                try:
+                    result = parser_func(file_path, codebase_path)
+                    results.append(result)
+                except (UnicodeDecodeError, Exception) as e:
+                    error_info = {"file": str(file_path.relative_to(codebase_path)), "error": str(e), "type": type(e).__name__}
+                    self.errors.append(error_info)
+                    logger.debug(f"Failed to parse file {file_path}: {e}")
+                    results.append(None)
+            return results
+        
+        # Use parallel processing for larger file sets
+        results = [None] * len(files)
+        num_workers = self.max_workers or min(4, len(files))
+        
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            future_to_index = {
+                executor.submit(parser_func, file_path, codebase_path): i
+                for i, file_path in enumerate(files)
+            }
+            
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                try:
+                    result = future.result()
+                    results[index] = result
+                except (UnicodeDecodeError, Exception) as e:
+                    file_path = files[index]
+                    error_info = {"file": str(file_path.relative_to(codebase_path)), "error": str(e), "type": type(e).__name__}
+                    self.errors.append(error_info)
+                    logger.debug(f"Failed to parse file {file_path}: {e}")
+                    results[index] = None
+        
+        return results
+
+    def _get_cache_key(self, file_path: Path) -> str:
+        """
+        Generate cache key for a file based on path, mtime, and size.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Cache key string
+        """
+        try:
+            stat = file_path.stat()
+            # Use path, mtime, and size for cache key
+            key_data = f"{file_path}:{stat.st_mtime}:{stat.st_size}"
+            return hashlib.md5(key_data.encode()).hexdigest()
+        except Exception:
+            # Fallback to just path if stat fails
+            return hashlib.md5(str(file_path).encode()).hexdigest()
+
+    def _load_from_cache(self, cache_key: str) -> dict | None:
+        """
+        Load parse result from cache if available.
+
+        Args:
+            cache_key: Cache key for the file
+
+        Returns:
+            Cached parse result or None if not found/invalid
+        """
+        if not self.cache_dir:
+            return None
+        
+        cache_file = self.cache_dir / f"{cache_key}.json"
+        if cache_file.exists():
+            try:
+                cached_data = json.loads(cache_file.read_text(encoding="utf-8"))
+                return cached_data
+            except Exception as e:
+                logger.debug(f"Failed to load cache for {cache_key}: {e}")
+                return None
+        return None
+
+    def _save_to_cache(self, cache_key: str, result: dict) -> None:
+        """
+        Save parse result to cache.
+
+        Args:
+            cache_key: Cache key for the file
+            result: Parse result to cache
+        """
+        if not self.cache_dir:
+            return
+        
+        try:
+            cache_file = self.cache_dir / f"{cache_key}.json"
+            cache_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to save cache for {cache_key}: {e}")
 
     def _detect_language(self, file_path: Path) -> str | None:
         """
@@ -90,6 +225,8 @@ class CodebaseScanner:
         core_loops: list[str] = []
         data_models: list[str] = []
         config_files: list[str] = []
+        dependencies: dict[str, list[str]] = {}
+        import_graph: dict[str, list[str]] = {}
         has_tests = False
         has_persistence = False
         has_cli = False
@@ -112,13 +249,21 @@ class CodebaseScanner:
             files_by_language[language] = []
             for ext in extensions:
                 pattern = f"*{ext}"
-                files = list(codebase_path.rglob(pattern))
-                # Filter out excluded directories
-                files = [
-                    f for f in files
-                    if not any(excluded in f.parts for excluded in excluded_dirs)
-                ]
-                files_by_language[language].extend(files)
+                try:
+                    files = list(codebase_path.rglob(pattern))
+                    # Filter out excluded directories
+                    files = [
+                        f for f in files
+                        if not any(excluded in f.parts for excluded in excluded_dirs)
+                    ]
+                    files_by_language[language].extend(files)
+                except Exception as e:
+                    warning_msg = f"Error scanning {pattern} files: {e}"
+                    logger.warning(warning_msg)
+                    self.warnings.append({"pattern": pattern, "error": str(e)})
+        
+        total_files = sum(len(files) for files in files_by_language.values())
+        logger.info(f"Found {total_files} source files across {len(files_by_language)} languages")
 
         # Process Python files (keep existing AST-based parsing)
         python_files = files_by_language.get("python", [])
@@ -143,6 +288,23 @@ class CodebaseScanner:
                 
                 if file_apis:
                     public_apis[module_name] = file_apis
+                
+                # Extract imports for dependency graph
+                file_imports: list[str] = []
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            import_name = alias.name.split(".")[0]  # Get top-level module
+                            if import_name not in file_imports:
+                                file_imports.append(import_name)
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            import_name = node.module.split(".")[0]  # Get top-level module
+                            if import_name not in file_imports:
+                                file_imports.append(import_name)
+                
+                if file_imports:
+                    import_graph[module_name] = file_imports
                 
                 # Check for data models
                 for node in ast.walk(tree):
@@ -192,38 +354,43 @@ class CodebaseScanner:
                                     if decorator.func.attr in ("route", "get", "post", "put", "delete", "api"):
                                         has_api = True
 
-            except (SyntaxError, UnicodeDecodeError, Exception):
+            except (SyntaxError, UnicodeDecodeError, Exception) as e:
                 # Skip files that can't be parsed
+                error_info = {"file": str(py_file.relative_to(codebase_path)), "error": str(e), "type": type(e).__name__}
+                self.errors.append(error_info)
+                logger.debug(f"Failed to parse Python file {py_file}: {e}")
                 continue
 
-        # Process JavaScript/TypeScript files
+        # Process JavaScript/TypeScript files (can be parallelized)
         js_ts_files = files_by_language.get("javascript", []) + files_by_language.get("typescript", [])
-        for js_ts_file in js_ts_files:
-            try:
-                result = self._parse_js_ts_file(js_ts_file, codebase_path)
-                if result:
-                    module_name = result.get("module_name")
-                    if module_name:
-                        modules.append(module_name)
-                    if result.get("entry_points"):
-                        entry_points.extend(result["entry_points"])
-                    if result.get("apis"):
-                        if module_name and module_name in public_apis:
-                            public_apis[module_name].extend(result["apis"])
-                        elif module_name:
-                            public_apis[module_name] = result["apis"]
-                    if result.get("data_models"):
-                        data_models.extend(result["data_models"])
-                    if result.get("has_api"):
-                        has_api = True
-                    if result.get("has_cli"):
-                        has_cli = True
-                    if result.get("has_loop") and module_name:
-                        core_loops.append(module_name)
-            except (UnicodeDecodeError, Exception):
-                # Skip files that can't be parsed
-                continue
+        js_ts_results = self._process_files_parallel(js_ts_files, codebase_path, self._parse_js_ts_file)
+        for result in js_ts_results:
+            if result:
+                module_name = result.get("module_name")
+                if module_name:
+                    modules.append(module_name)
+                if result.get("entry_points"):
+                    entry_points.extend(result["entry_points"])
+                if result.get("apis"):
+                    if module_name and module_name in public_apis:
+                        public_apis[module_name].extend(result["apis"])
+                    elif module_name:
+                        public_apis[module_name] = result["apis"]
+                if result.get("data_models"):
+                    data_models.extend(result["data_models"])
+                if result.get("has_api"):
+                    has_api = True
+                if result.get("has_cli"):
+                    has_cli = True
+                if result.get("has_loop") and module_name:
+                    core_loops.append(module_name)
+                # Track imports for dependency graph
+                if result.get("imports") and module_name:
+                    import_graph[module_name] = result["imports"]
 
+        # Collect markdown context separately
+        markdown_context: dict[str, dict] = {}
+        
         # Process all other language files
         for language in files_by_language:
             if language in ("python", "javascript", "typescript"):
@@ -251,10 +418,136 @@ class CodebaseScanner:
                             has_cli = True
                         if result.get("has_loop") and module_name:
                             core_loops.append(module_name)
-                except (UnicodeDecodeError, Exception):
+                        # Track imports for dependency graph
+                        if result.get("imports") and module_name:
+                            import_graph[module_name] = result["imports"]
+                        # Store markdown context separately
+                        if language == "markdown" and result.get("context"):
+                            markdown_context[module_name] = result["context"]
+                except (UnicodeDecodeError, Exception) as e:
                     # Skip files that can't be parsed
+                    error_info = {"file": str(file_path.relative_to(codebase_path)), "error": str(e), "type": type(e).__name__}
+                    self.errors.append(error_info)
+                    logger.debug(f"Failed to parse {language} file {file_path}: {e}")
                     continue
 
+        # Extract dependencies from config files
+        dependencies: dict[str, list[str]] = {}
+        
+        # Extract from package.json (npm/yarn)
+        package_json = codebase_path / "package.json"
+        if package_json.exists():
+            try:
+                package_data = json.loads(package_json.read_text(encoding="utf-8"))
+                deps = list(package_data.get("dependencies", {}).keys())
+                dev_deps = list(package_data.get("devDependencies", {}).keys())
+                if deps or dev_deps:
+                    dependencies["npm"] = deps + dev_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse package.json: {e}")
+        
+        # Extract from build.gradle (Gradle/Java)
+        build_gradle = codebase_path / "build.gradle"
+        if build_gradle.exists() or (codebase_path / "build.gradle.kts").exists():
+            try:
+                gradle_file = build_gradle if build_gradle.exists() else codebase_path / "build.gradle.kts"
+                gradle_content = gradle_file.read_text(encoding="utf-8")
+                gradle_deps = []
+                # Look for dependency declarations with or without prefix
+                # Pattern: (prefix )?"group:artifact:version" where version can be ${variable}
+                # Examples: modImplementation "net.fabricmc:fabric-loader:${version}"
+                #          minecraft "com.mojang:minecraft:1.21"
+                #          modImplementation "net.fabricmc.fabric-api:fabric-api:${version}"
+                dep_pattern = r"(?:\w+\s+)?['\"]([\w.-]+):([\w-]+):([\w.${}-]+)['\"]"
+                for match in re.finditer(dep_pattern, gradle_content):
+                    group = match.group(1)
+                    artifact = match.group(2)
+                    # Skip if artifact starts with $ (variable reference)
+                    if not artifact.startswith("$") and not group.startswith("$"):
+                        dep_name = f"{group}:{artifact}"
+                        if dep_name not in gradle_deps:
+                            gradle_deps.append(dep_name)
+                if gradle_deps:
+                    dependencies["gradle"] = gradle_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse build.gradle: {e}")
+        
+        # Extract from pom.xml (Maven)
+        pom_xml = codebase_path / "pom.xml"
+        if pom_xml.exists():
+            try:
+                import xml.etree.ElementTree as ET
+                tree = ET.parse(pom_xml)
+                root = tree.getroot()
+                maven_deps = []
+                # Find all dependency elements
+                for dep in root.findall(".//{http://maven.apache.org/POM/4.0.0}dependency"):
+                    group_id = dep.find("{http://maven.apache.org/POM/4.0.0}groupId")
+                    artifact_id = dep.find("{http://maven.apache.org/POM/4.0.0}artifactId")
+                    if group_id is not None and artifact_id is not None:
+                        maven_deps.append(f"{group_id.text}:{artifact_id.text}")
+                if maven_deps:
+                    dependencies["maven"] = maven_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse pom.xml: {e}")
+        
+        # Extract from requirements.txt (Python)
+        requirements_txt = codebase_path / "requirements.txt"
+        if requirements_txt.exists():
+            try:
+                req_content = requirements_txt.read_text(encoding="utf-8")
+                pip_deps = []
+                for line in req_content.splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        # Extract package name (before ==, >=, etc.)
+                        dep_name = re.split(r"[>=<!=]", line)[0].strip()
+                        if dep_name:
+                            pip_deps.append(dep_name)
+                if pip_deps:
+                    dependencies["pip"] = pip_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse requirements.txt: {e}")
+        
+        # Extract from go.mod (Go)
+        go_mod = codebase_path / "go.mod"
+        if go_mod.exists():
+            try:
+                go_content = go_mod.read_text(encoding="utf-8")
+                go_deps = []
+                for line in go_content.splitlines():
+                    if line.strip().startswith("require"):
+                        # Extract module names from require statements
+                        matches = re.findall(r"([\w./-]+)\s+v[\d.]+", line)
+                        go_deps.extend(matches)
+                if go_deps:
+                    dependencies["go"] = go_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse go.mod: {e}")
+        
+        # Extract from Cargo.toml (Rust)
+        cargo_toml = codebase_path / "Cargo.toml"
+        if cargo_toml.exists():
+            try:
+                cargo_content = cargo_toml.read_text(encoding="utf-8")
+                rust_deps = []
+                # Look for [dependencies] section
+                in_deps = False
+                for line in cargo_content.splitlines():
+                    if line.strip().startswith("[dependencies]"):
+                        in_deps = True
+                        continue
+                    if line.strip().startswith("[") and in_deps:
+                        break
+                    if in_deps and "=" in line:
+                        dep_name = line.split("=")[0].strip()
+                        if dep_name:
+                            rust_deps.append(dep_name)
+                if rust_deps:
+                    dependencies["cargo"] = rust_deps
+            except Exception as e:
+                logger.debug(f"Failed to parse Cargo.toml: {e}")
+        
         # Scan for config files
         config_patterns = [
             # Python config files
@@ -390,6 +683,21 @@ class CodebaseScanner:
 
         # Count source files (excluding config/test files)
         file_count = sum(len(files) for files in files_by_language.values())
+        
+        # Calculate complexity metrics
+        total_lines = 0
+        total_size = 0
+        for language_files in files_by_language.values():
+            for file_path in language_files:
+                try:
+                    # Count lines
+                    content = file_path.read_text(encoding="utf-8")
+                    total_lines += len(content.splitlines())
+                    total_size += file_path.stat().st_size
+                except Exception:
+                    continue
+        
+        average_file_size = total_size / file_count if file_count > 0 else 0.0
 
         # Check for tests
         # Python test patterns
@@ -547,6 +855,11 @@ class CodebaseScanner:
             has_source_code=file_count > 0,
             has_readme=has_readme,
             file_count=file_count,
+            documentation_context=markdown_context,
+            dependencies=dependencies,
+            total_lines_of_code=total_lines,
+            average_file_size=average_file_size,
+            import_graph=import_graph,
         )
 
     def _merge_parse_result(
@@ -622,6 +935,11 @@ class CodebaseScanner:
             "dart": self._parse_dart_file,
             "vue": self._parse_vue_file,
             "svelte": self._parse_svelte_file,
+            "markdown": self._parse_markdown_file,
+            "c": self._parse_c_cpp_file,
+            "cpp": self._parse_c_cpp_file,
+            "scala": self._parse_scala_file,
+            "elixir": self._parse_elixir_file,
         }
         parser = parser_map.get(language)
         if parser:
@@ -797,7 +1115,11 @@ class CodebaseScanner:
         package_match = re.search(r"^package\s+(\S+);", content, re.MULTILINE)
         if package_match:
             package_name = package_match.group(1)
-            module_name = f"{package_name}.{module_name.replace('/', '.')}"
+            # Use package name directly, not combined with file path
+            # File path already contains the package structure
+            # Extract just the class name from the file path
+            class_name = file_path.stem
+            module_name = f"{package_name}.{class_name}"
 
         # Extract public classes
         class_pattern = r"public\s+class\s+(\w+)"
@@ -823,6 +1145,24 @@ class CodebaseScanner:
         if re.search(r"@Entity", content):
             for match in re.finditer(r"@Entity\s+public\s+class\s+(\w+)", content):
                 result["data_models"].append(f"{module_name}.{match.group(1)}")
+
+        # Extract imports for dependency graph
+        import_pattern = r"^import\s+([\w.]+)"
+        imports = re.findall(import_pattern, content, re.MULTILINE)
+        # Filter out standard library imports (java.*, javax.*) and get top-level packages
+        imports = [imp.split(".")[0] for imp in imports if not imp.startswith("java.") and not imp.startswith("javax.")]
+        imports = list(set(imports))  # Remove duplicates
+        if imports:
+            result["imports"] = imports
+
+        # Check for Fabric mod entry point
+        if re.search(r"implements\s+ModInitializer", content):
+            result["entry_points"].append(f"{module_name}.onInitialize")
+            result["has_api"] = True
+
+        # Check for Minecraft/Fabric patterns
+        if re.search(r"(net\.fabricmc|net\.minecraft)", content):
+            result["has_api"] = True
 
         return result
 
@@ -1333,6 +1673,276 @@ class CodebaseScanner:
 
         return result
 
+    def _parse_c_cpp_file(
+        self, file_path: Path, codebase_path: Path
+    ) -> dict | None:
+        """Parse a C/C++ file to extract structural information."""
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to read C/C++ file {file_path}: {e}")
+            return None
+
+        relative_path = file_path.relative_to(codebase_path)
+        module_name = str(relative_path.with_suffix("")).replace("\\", "/")
+
+        result: dict = {
+            "module_name": module_name,
+            "entry_points": [],
+            "apis": [],
+            "data_models": [],
+            "has_api": False,
+            "has_cli": False,
+            "has_loop": False,
+        }
+
+        # Strip comments
+        content = self._strip_comments(content, "c")
+
+        # Extract function declarations/definitions
+        # Match: return_type function_name(args) or return_type function_name(args) { ... }
+        func_pattern = r"(?:^|\s)(\w+)\s+(\w+)\s*\([^)]*\)\s*[;{]"
+        for match in re.finditer(func_pattern, content, re.MULTILINE):
+            func_name = match.group(2)
+            # Skip if it's a type or keyword
+            if func_name not in ("if", "while", "for", "switch", "return", "sizeof", "typeof"):
+                if not func_name.startswith("_"):
+                    result["apis"].append(func_name)
+
+        # Extract struct definitions (data models)
+        struct_pattern = r"struct\s+(\w+)\s*[{\s]"
+        for match in re.finditer(struct_pattern, content):
+            struct_name = match.group(1)
+            result["data_models"].append(f"{module_name}.{struct_name}")
+
+        # Extract typedefs
+        typedef_pattern = r"typedef\s+(?:struct\s+)?\w+\s+(\w+)\s*;"
+        for match in re.finditer(typedef_pattern, content):
+            type_name = match.group(1)
+            result["data_models"].append(f"{module_name}.{type_name}")
+
+        # Extract main function (entry point)
+        if re.search(r"^int\s+main\s*\(", content, re.MULTILINE) or re.search(r"^void\s+main\s*\(", content, re.MULTILINE):
+            result["entry_points"].append(f"{module_name}.main")
+
+        # Check for header files
+        if file_path.suffix in (".h", ".hpp", ".hxx", ".hh"):
+            # Headers typically define APIs
+            result["has_api"] = True
+
+        return result
+
+    def _parse_scala_file(
+        self, file_path: Path, codebase_path: Path
+    ) -> dict | None:
+        """Parse a Scala file to extract structural information."""
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to read Scala file {file_path}: {e}")
+            return None
+
+        relative_path = file_path.relative_to(codebase_path)
+        module_name = str(relative_path.with_suffix("")).replace("\\", "/")
+
+        result: dict = {
+            "module_name": module_name,
+            "entry_points": [],
+            "apis": [],
+            "data_models": [],
+            "has_api": False,
+            "has_cli": False,
+            "has_loop": False,
+        }
+
+        # Extract package
+        package_match = re.search(r"^package\s+([\w.]+)", content, re.MULTILINE)
+        if package_match:
+            package_name = package_match.group(1)
+            module_name = f"{package_name}.{module_name.replace('/', '.')}"
+
+        # Extract classes
+        class_pattern = r"^(?:public\s+)?class\s+(\w+)"
+        for match in re.finditer(class_pattern, content, re.MULTILINE):
+            class_name = match.group(1)
+            result["apis"].append(class_name)
+
+        # Extract objects (singletons)
+        object_pattern = r"^object\s+(\w+)"
+        for match in re.finditer(object_pattern, content, re.MULTILINE):
+            object_name = match.group(1)
+            result["apis"].append(object_name)
+
+        # Extract traits
+        trait_pattern = r"^trait\s+(\w+)"
+        for match in re.finditer(trait_pattern, content, re.MULTILINE):
+            trait_name = match.group(1)
+            result["apis"].append(trait_name)
+
+        # Extract case classes (data models)
+        case_class_pattern = r"case\s+class\s+(\w+)"
+        for match in re.finditer(case_class_pattern, content):
+            case_class_name = match.group(1)
+            result["data_models"].append(f"{module_name}.{case_class_name}")
+
+        # Extract main method (entry point)
+        if re.search(r"def\s+main\s*\(", content):
+            result["entry_points"].append(f"{module_name}.main")
+
+        return result
+
+    def _parse_elixir_file(
+        self, file_path: Path, codebase_path: Path
+    ) -> dict | None:
+        """Parse an Elixir file to extract structural information."""
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to read Elixir file {file_path}: {e}")
+            return None
+
+        relative_path = file_path.relative_to(codebase_path)
+        module_name = str(relative_path.with_suffix("")).replace("\\", "/")
+
+        result: dict = {
+            "module_name": module_name,
+            "entry_points": [],
+            "apis": [],
+            "data_models": [],
+            "has_api": False,
+            "has_cli": False,
+            "has_loop": False,
+        }
+
+        # Extract module definition
+        module_match = re.search(r"^defmodule\s+([\w.]+)", content, re.MULTILINE)
+        if module_match:
+            full_module = module_match.group(1)
+            module_name = full_module.replace(".", "/")
+
+        # Extract public functions (def)
+        def_pattern = r"^\s*def\s+(\w+)"
+        for match in re.finditer(def_pattern, content, re.MULTILINE):
+            func_name = match.group(1)
+            if not func_name.startswith("_"):
+                result["apis"].append(func_name)
+
+        # Extract private functions (defp)
+        defp_pattern = r"^\s*defp\s+(\w+)"
+        # Note: defp are private, but we might want to track them too
+        # For now, skip them or add to a separate list
+
+        # Extract macros (defmacro)
+        macro_pattern = r"^\s*defmacro\s+(\w+)"
+        for match in re.finditer(macro_pattern, content, re.MULTILINE):
+            macro_name = match.group(1)
+            result["apis"].append(f"macro:{macro_name}")
+
+        # Check for GenServer (common Elixir pattern)
+        if re.search(r"use\s+GenServer", content):
+            result["has_api"] = True
+
+        # Check for Phoenix (web framework)
+        if re.search(r"use\s+Phoenix", content):
+            result["has_api"] = True
+
+        return result
+
+    def _parse_markdown_file(
+        self, file_path: Path, codebase_path: Path
+    ) -> dict | None:
+        """Parse a Markdown file to extract project context and documentation."""
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to read Markdown file {file_path}: {e}")
+            return None
+
+        relative_path = file_path.relative_to(codebase_path)
+        module_name = str(relative_path.with_suffix("")).replace("\\", "/")
+
+        result: dict = {
+            "module_name": module_name,
+            "entry_points": [],
+            "apis": [],
+            "data_models": [],
+            "has_api": False,
+            "has_cli": False,
+            "has_loop": False,
+            "context": {},
+        }
+
+        # Extract headings (H1-H6) for structure
+        headings = []
+        heading_pattern = r"^(#{1,6})\s+(.+)$"
+        for match in re.finditer(heading_pattern, content, re.MULTILINE):
+            level = len(match.group(1))
+            text = match.group(2).strip()
+            headings.append({"level": level, "text": text})
+
+        # Extract code blocks and their languages
+        code_blocks = []
+        code_block_pattern = r"```(\w+)?\n([\s\S]*?)```"
+        for match in re.finditer(code_block_pattern, content):
+            language = match.group(1) or "unknown"
+            code = match.group(2)
+            code_blocks.append({"language": language, "code": code[:200]})  # Limit code length
+
+        # Extract project description (first paragraph or "About" section)
+        # Look for first substantial paragraph (not just whitespace/headers)
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip() and not p.strip().startswith("#")]
+        if paragraphs:
+            # Skip very short paragraphs (likely formatting)
+            substantial_paragraphs = [p for p in paragraphs if len(p) > 50]
+            if substantial_paragraphs:
+                result["context"]["description"] = substantial_paragraphs[0][:500]  # Limit length
+
+        # Extract architecture sections
+        architecture_pattern = r"(?:^##+\s+(?:Architecture|Design|System|Components).*?$)([\s\S]*?)(?=^##|\Z)"
+        arch_matches = re.finditer(architecture_pattern, content, re.MULTILINE | re.IGNORECASE)
+        if arch_matches:
+            arch_content = " ".join([m.group(1).strip()[:500] for m in arch_matches])
+            result["context"]["architecture"] = arch_content
+
+        # Extract API documentation sections
+        api_pattern = r"(?:^##+\s+(?:API|Endpoints|Routes).*?$)([\s\S]*?)(?=^##|\Z)"
+        api_matches = re.finditer(api_pattern, content, re.MULTILINE | re.IGNORECASE)
+        if api_matches:
+            api_content = " ".join([m.group(1).strip()[:500] for m in api_matches])
+            result["context"]["api_docs"] = api_content
+            result["has_api"] = True
+
+        # Extract features list
+        features_pattern = r"(?:^##+\s+(?:Features|Capabilities).*?$)([\s\S]*?)(?=^##|\Z)"
+        features_matches = re.finditer(features_pattern, content, re.MULTILINE | re.IGNORECASE)
+        if features_matches:
+            features_text = " ".join([m.group(1).strip()[:500] for m in features_matches])
+            result["context"]["features"] = features_text
+
+        # Extract setup/installation instructions
+        setup_pattern = r"(?:^##+\s+(?:Installation|Setup|Getting Started|Quick Start).*?$)([\s\S]*?)(?=^##|\Z)"
+        setup_matches = re.finditer(setup_pattern, content, re.MULTILINE | re.IGNORECASE)
+        if setup_matches:
+            setup_content = " ".join([m.group(1).strip()[:500] for m in setup_matches])
+            result["context"]["setup"] = setup_content
+
+        # Store headings and code blocks
+        result["context"]["headings"] = headings
+        result["context"]["code_blocks"] = code_blocks
+
+        # Special handling for README.md - treat as important context
+        if file_path.name.upper() in ("README.md", "README.MD", "README.markdown"):
+            result["entry_points"].append(f"{module_name}.readme")
+            # Store full content (truncated) for README
+            result["context"]["full_content"] = content[:2000]  # Limit to 2000 chars
+
+        # Cache result
+        if self.cache_dir:
+            cache_key = self._get_cache_key(file_path)
+            self._save_to_cache(cache_key, result)
+
+        return result
+
 
 class ASTVisitor(ast.NodeVisitor):
     """AST visitor to extract classes and functions."""
@@ -1382,4 +1992,3 @@ class LoopVisitor(ast.NodeVisitor):
                     self.has_loop = True
                     return
         self.generic_visit(node)
-

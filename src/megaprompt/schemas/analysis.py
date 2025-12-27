@@ -38,6 +38,26 @@ class CodebaseStructure(BaseModel):
     )
     has_readme: bool = Field(default=False, description="Whether README exists")
     file_count: int = Field(default=0, description="Total number of source files")
+    documentation_context: dict[str, dict] = Field(
+        default_factory=dict,
+        description="Extracted context from Markdown documentation files (file_path -> context dict)"
+    )
+    dependencies: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Extracted dependencies by package manager (e.g., {'npm': ['react', 'express'], 'pip': ['flask']})"
+    )
+    total_lines_of_code: int = Field(
+        default=0,
+        description="Total lines of code across all source files"
+    )
+    average_file_size: float = Field(
+        default=0.0,
+        description="Average file size in bytes"
+    )
+    import_graph: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Module import graph: module -> [imported_modules]"
+    )
 
 
 class ProjectIntent(BaseModel):

@@ -30,9 +30,35 @@ The analysis combines static code scanning (multi-language parsing) with AI-powe
 
 ## Installation
 
+### Option 1: Install from GitHub
+
+Download and install directly from GitHub:
+
 ```bash
+# Clone the repository
+git clone https://github.com/End3r27/MEGAPROMPT.git
+cd MEGAPROMPT
+
+# Install in editable mode
 pip install -e .
 ```
+
+Or install directly without cloning:
+
+```bash
+pip install git+https://github.com/End3r27/MEGAPROMPT.git
+```
+
+### Option 2: Manual Installation
+
+If you've already downloaded the repository:
+
+```bash
+cd MEGAPROMPT
+pip install -e .
+```
+
+After installation, you'll need to configure your LLM provider. See the [Environment Variables](#environment-variables) section for setup instructions.
 
 ## Requirements
 
@@ -42,6 +68,8 @@ pip install -e .
   - **Ollama**: Running locally at `http://localhost:11434` (or set `OLLAMA_BASE_URL`)
   - **Qwen AI**: API key from Alibaba Cloud DashScope (set `QWEN_API_KEY`)
   - **Google AI Gemini**: Free API key from Google AI Studio (set `GEMINI_API_KEY`)
+
+> **📝 Setting up API Keys**: See the [Environment Variables](#environment-variables) section below for detailed instructions on setting up API keys for each provider.
 
 ## Usage
 
@@ -89,16 +117,24 @@ megaprompt analyze ./project --format json --output analysis.json
 ```
 
 The analysis pipeline:
-1. **Static Code Scanner** - Extracts structural information (modules, APIs, entry points, data models) from multiple programming languages
-2. **Architectural Inference** - Infers project type and patterns using AI
-3. **Expected Systems Generator** - Generates canonical system checklist for the project type
-4. **Presence/Absence Matrix** - Compares expected vs actual systems to find gaps
-5. **Enhancement Generator** - Suggests context-aware enhancements
-6. **Intent Drift Detection** - Compares original design to implementation (if original prompt provided)
+1. **Static Code Scanner** - Extracts structural information (modules, APIs, entry points, data models) from 18+ programming languages
+   - Multi-language parsing with AST (Python) and regex-based pattern matching (other languages)
+   - Markdown context extraction for project documentation
+   - Framework and version detection from config files
+   - Dependency extraction from package managers
+   - Import graph construction for module relationships
+   - Build system and CI/CD detection
+   - Parallel processing and caching for performance
+2. **Intent Classification** - Classifies project intent (executable_utility, base_image, template, etc.) using AI
+3. **Architectural Inference** - Infers project type and patterns using AI
+4. **Expected Systems Generator** - Generates canonical system checklist for the project type
+5. **Presence/Absence Matrix** - Compares expected vs actual systems to find gaps
+6. **Enhancement Generator** - Suggests context-aware enhancements
+7. **Intent Drift Detection** - Compares original design to implementation (if original prompt provided)
 
 ### Supported Languages
 
-The codebase scanner supports **14 programming languages**:
+The codebase scanner supports **18+ programming languages and documentation formats**:
 
 **Backend Languages:**
 - **Python** (.py) - Full AST parsing for modules, classes, functions, data models
@@ -108,6 +144,9 @@ The codebase scanner supports **14 programming languages**:
 - **C#** (.cs) - Namespace detection, ASP.NET attributes, controllers
 - **Ruby** (.rb) - Module/class detection, Rails patterns, controllers
 - **PHP** (.php) - Namespace detection, Laravel patterns, controllers
+- **C/C++** (.c, .cpp, .h, .hpp) - Functions, structs, headers, entry points
+- **Scala** (.scala) - Classes, objects, traits, case classes
+- **Elixir** (.ex, .exs) - Modules, functions, macros, GenServers
 
 **Frontend/Web Frameworks:**
 - **JavaScript** (.js, .jsx) - ES6 modules, exports, Next.js/Express routes
@@ -120,6 +159,9 @@ The codebase scanner supports **14 programming languages**:
 - **Kotlin** (.kt) - Classes, objects, data classes, Android patterns
 - **Dart** (.dart) - Classes, Flutter widgets, entry points
 
+**Documentation/Context:**
+- **Markdown** (.md, .markdown) - Project context, architecture docs, API documentation, code examples
+
 The scanner automatically detects file types and extracts:
 - **Modules/Namespaces**: Package declarations, module structures
 - **Entry Points**: Main functions, application entry points, framework-specific patterns
@@ -128,6 +170,28 @@ The scanner automatically detects file types and extracts:
 - **Test Files**: Language-specific test patterns
 - **Config Files**: Build files, dependency manifests, framework configs
 - **Persistence Patterns**: Database libraries and ORMs
+- **Documentation Context**: Project descriptions, architecture notes, setup instructions from Markdown files
+- **Dependencies**: Extracted from package managers (npm, pip, maven, gradle, cargo, gem, composer, pub)
+- **Import Graph**: Module dependency relationships
+- **Build Systems**: Detected build tools (Make, CMake, Gradle, Maven, Cargo, etc.)
+- **CI/CD Configs**: GitHub Actions, GitLab CI, Jenkins, Azure Pipelines, CircleCI, Travis CI
+
+### Scanner Features
+
+The codebase scanner includes advanced features for comprehensive analysis:
+
+- **Multi-Language Parsing**: Supports 18+ languages with language-specific pattern recognition
+- **Markdown Context Extraction**: Extracts project context, architecture documentation, API docs, and code examples from `.md` files
+- **Framework Detection**: Automatically detects frameworks and versions (Next.js, React, Spring Boot, Rails, Laravel, etc.)
+- **Dependency Analysis**: Extracts dependencies from all major package managers
+- **Import Tracking**: Builds dependency graphs showing module relationships
+- **Build System Detection**: Identifies build tools and CI/CD configurations
+- **Performance Optimizations**: 
+  - Parallel file processing for faster scanning
+  - File-based caching to skip unchanged files
+  - Incremental scanning option (only scan changed files)
+- **Error Handling**: Comprehensive error collection and reporting with detailed logging
+- **Complexity Metrics**: Calculates lines of code, file sizes, and basic complexity statistics
 
 ## Options
 
@@ -159,6 +223,8 @@ The scanner automatically detects file types and extracts:
 - `--verbose/-v`: Show progress (default: enabled)
 
 ## Environment Variables
+
+> **💡 Quick Setup**: After installation, you'll need to set up API keys for your chosen LLM provider. See the provider-specific setup sections below for detailed instructions.
 
 ### Setting API Keys
 
@@ -384,11 +450,14 @@ The tool consists of a 5-stage pipeline:
 The analysis system uses a 4-phase pipeline:
 
 1. **Static Code Scanner** (No AI): Extracts structural information via multi-language parsing
-   - **Python**: Full AST parsing for modules, classes, functions, data models
+   - **Python**: Full AST parsing for modules, classes, functions, data models, imports
    - **Other Languages**: Regex-based pattern matching for modules, entry points, APIs, data models
-   - Detects: Modules/packages, entry points, public APIs, data models
-   - Identifies: Config files, test files, persistence patterns, framework-specific structures
-   - Supports 14 languages: Python, JavaScript, TypeScript, Java, Go, Rust, C#, Ruby, PHP, Swift, Kotlin, Dart, Vue, Svelte
+   - **Markdown**: Context extraction for project documentation, architecture notes, API docs, code examples
+   - Detects: Modules/packages, entry points, public APIs, data models, dependencies, imports
+   - Identifies: Config files, test files, persistence patterns, framework-specific structures, build systems, CI/CD configs
+   - Supports 18+ languages: Python, JavaScript, TypeScript, Java, Go, Rust, C#, Ruby, PHP, Swift, Kotlin, Dart, Vue, Svelte, C/C++, Scala, Elixir, Markdown
+   - **Performance**: Parallel processing, file-based caching, incremental scanning
+   - **Metadata**: Framework versions, dependency graphs, complexity metrics, import relationships
 
 2. **Intent Classification** (AI): Classifies project intent (executable_utility, base_image, template, etc.)
 3. **Architectural Inference** (AI): Determines project type and patterns
