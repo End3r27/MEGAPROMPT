@@ -216,7 +216,27 @@ if __name__ == "__main__":
         basic_settings = '''"""
 Django settings for megaprompt_web project.
 """
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# Check multiple locations for .env file
+project_root = Path(__file__).resolve().parent.parent.parent.parent
+env_files = [
+    project_root / ".env",
+    project_root / ".env.local",
+    Path.cwd() / ".env",
+    Path.cwd() / ".env.local",
+]
+
+for env_file in env_files:
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
+        break
+else:
+    # If no .env file found, try loading from default location
+    load_dotenv(override=False)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -364,6 +384,7 @@ application = get_asgi_application()
 djangorestframework>=3.14
 django-cors-headers>=4.0
 channels>=4.0
+python-dotenv>=1.0.0
 """
         requirements_file.write_text(requirements_content)
 
@@ -487,11 +508,27 @@ def start_backend_server(backend_dir: Path, port: int) -> Optional[subprocess.Po
     """Start Django backend server."""
     click.echo(f"Starting backend server on port {port}...")
     try:
+        # Pass environment variables to the backend process
+        env = os.environ.copy()
+        
+        # Ensure MEGAPROMPT environment variables are passed through
+        # These are already in os.environ if set, but we make sure they're passed
+        megaprompt_env_vars = [
+            "OPENROUTER_API_KEY",
+            "QWEN_API_KEY",
+            "GEMINI_API_KEY",
+            "OLLAMA_BASE_URL",
+        ]
+        for var in megaprompt_env_vars:
+            if var in os.environ:
+                env[var] = os.environ[var]
+        
         process = subprocess.Popen(
             [sys.executable, "manage.py", "runserver", str(port)],
             cwd=backend_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
         )
         # Wait a bit to check if server started successfully
         time.sleep(2)
@@ -500,7 +537,8 @@ def start_backend_server(backend_dir: Path, port: int) -> Optional[subprocess.Po
             return process
         else:
             stdout, stderr = process.communicate()
-            click.echo(f"Error: Backend server failed to start: {stderr.decode()}", err=True)
+            error_msg = stderr.decode() if stderr else "Unknown error"
+            click.echo(f"Error: Backend server failed to start: {error_msg}", err=True)
             return None
     except Exception as e:
         click.echo(f"Error starting backend server: {e}", err=True)

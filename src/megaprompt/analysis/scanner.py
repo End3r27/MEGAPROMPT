@@ -41,16 +41,18 @@ class CodebaseScanner:
         "svelte": [".svelte"],
     }
 
-    def __init__(self, depth: str = "high", verbose: bool = False):
+    def __init__(self, depth: str = "high", verbose: bool = False, max_workers: Optional[int] = None):
         """
         Initialize codebase scanner.
 
         Args:
             depth: Scanning depth: "low", "medium", "high"
             verbose: If True, enable verbose logging
+            max_workers: Maximum number of parallel workers (None for auto-detect)
         """
         self.depth = depth
         self.verbose = verbose
+        self.max_workers = max_workers
         self.errors: list[dict[str, str]] = []  # Store errors for reporting
         self.warnings: list[dict[str, str]] = []  # Store warnings
         

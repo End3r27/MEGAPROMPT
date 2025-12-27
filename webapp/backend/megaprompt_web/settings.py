@@ -1,7 +1,27 @@
 """
 Django settings for megaprompt_web project.
 """
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# Check multiple locations for .env file
+project_root = Path(__file__).resolve().parent.parent.parent.parent
+env_files = [
+    project_root / ".env",
+    project_root / ".env.local",
+    Path.cwd() / ".env",
+    Path.cwd() / ".env.local",
+]
+
+for env_file in env_files:
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
+        break
+else:
+    # If no .env file found, try loading from default location
+    load_dotenv(override=False)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
