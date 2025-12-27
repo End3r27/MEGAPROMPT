@@ -26,7 +26,7 @@ The analysis system uses a systems-thinking approach to identify:
 - **Enhancement Ideas**: Context-aware suggestions that fit the existing architecture
 - **Intent Drift**: Discrepancies between original design and implementation
 
-The analysis combines static code scanning (AST parsing) with AI-powered architectural inference to provide actionable insights without code rewriting.
+The analysis combines static code scanning (multi-language parsing) with AI-powered architectural inference to provide actionable insights without code rewriting.
 
 ## Installation
 
@@ -89,12 +89,45 @@ megaprompt analyze ./project --format json --output analysis.json
 ```
 
 The analysis pipeline:
-1. **Static Code Scanner** - Extracts structural information (modules, APIs, entry points, data models)
+1. **Static Code Scanner** - Extracts structural information (modules, APIs, entry points, data models) from multiple programming languages
 2. **Architectural Inference** - Infers project type and patterns using AI
 3. **Expected Systems Generator** - Generates canonical system checklist for the project type
 4. **Presence/Absence Matrix** - Compares expected vs actual systems to find gaps
 5. **Enhancement Generator** - Suggests context-aware enhancements
 6. **Intent Drift Detection** - Compares original design to implementation (if original prompt provided)
+
+### Supported Languages
+
+The codebase scanner supports **14 programming languages**:
+
+**Backend Languages:**
+- **Python** (.py) - Full AST parsing for modules, classes, functions, data models
+- **Java** (.java) - Package detection, Spring annotations, entry points, entities
+- **Go** (.go) - Package detection, exported functions, structs, interfaces
+- **Rust** (.rs) - Module detection, pub functions, structs, traits, enums
+- **C#** (.cs) - Namespace detection, ASP.NET attributes, controllers
+- **Ruby** (.rb) - Module/class detection, Rails patterns, controllers
+- **PHP** (.php) - Namespace detection, Laravel patterns, controllers
+
+**Frontend/Web Frameworks:**
+- **JavaScript** (.js, .jsx) - ES6 modules, exports, Next.js/Express routes
+- **TypeScript** (.ts, .tsx) - Interfaces, types, Next.js API routes
+- **Vue** (.vue) - Single File Components, props, exposed methods
+- **Svelte** (.svelte) - Components, props, exports
+
+**Mobile Languages:**
+- **Swift** (.swift) - Classes, structs, protocols, @main entry points
+- **Kotlin** (.kt) - Classes, objects, data classes, Android patterns
+- **Dart** (.dart) - Classes, Flutter widgets, entry points
+
+The scanner automatically detects file types and extracts:
+- **Modules/Namespaces**: Package declarations, module structures
+- **Entry Points**: Main functions, application entry points, framework-specific patterns
+- **Public APIs**: Exported functions, classes, methods, interfaces
+- **Data Models**: Structs, classes, interfaces, types, entities
+- **Test Files**: Language-specific test patterns
+- **Config Files**: Build files, dependency manifests, framework configs
+- **Persistence Patterns**: Database libraries and ORMs
 
 ## Options
 
@@ -350,11 +383,12 @@ The tool consists of a 5-stage pipeline:
 
 The analysis system uses a 4-phase pipeline:
 
-1. **Static Code Scanner** (No AI): Extracts structural information via AST parsing
-   - Modules, packages, entry points
-   - Public APIs (classes, functions)
-   - Data models (Pydantic, dataclasses)
-   - Config files, tests, persistence patterns
+1. **Static Code Scanner** (No AI): Extracts structural information via multi-language parsing
+   - **Python**: Full AST parsing for modules, classes, functions, data models
+   - **Other Languages**: Regex-based pattern matching for modules, entry points, APIs, data models
+   - Detects: Modules/packages, entry points, public APIs, data models
+   - Identifies: Config files, test files, persistence patterns, framework-specific structures
+   - Supports 14 languages: Python, JavaScript, TypeScript, Java, Go, Rust, C#, Ruby, PHP, Swift, Kotlin, Dart, Vue, Svelte
 
 2. **Intent Classification** (AI): Classifies project intent (executable_utility, base_image, template, etc.)
 3. **Architectural Inference** (AI): Determines project type and patterns
