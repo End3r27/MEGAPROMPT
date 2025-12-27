@@ -1,0 +1,55 @@
+"""
+Django settings template.
+
+This shows what needs to be added to the generated settings.py file.
+"""
+
+# Add to INSTALLED_APPS:
+INSTALLED_APPS = [
+    # ... existing apps ...
+    "rest_framework",
+    "corsheaders",
+    "channels",
+    "api",
+    "core",
+]
+
+# Add to MIDDLEWARE (corsheaders should be near the top):
+MIDDLEWARE = [
+    # ... existing middleware ...
+    "corsheaders.middleware.CorsMiddleware",
+    # ... rest of middleware ...
+]
+
+# Add REST Framework configuration:
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.MultiPartParser",
+        "rest_framework.parsers.FormParser",
+    ],
+}
+
+# Add CORS settings:
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# Add Channels configuration:
+ASGI_APPLICATION = "megaprompt_web.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+

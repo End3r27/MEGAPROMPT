@@ -1069,6 +1069,160 @@ def analyze(
         sys.exit(1)
 
 
+@main.command()
+@click.option(
+    "--port-backend",
+    type=int,
+    default=8000,
+    help="Backend server port (default: 8000)",
+)
+@click.option(
+    "--port-frontend",
+    type=int,
+    default=3000,
+    help="Frontend server port (default: 3000)",
+)
+@click.option(
+    "--no-browser",
+    is_flag=True,
+    help="Don't open browser automatically",
+)
+@click.option(
+    "--skip-setup",
+    is_flag=True,
+    help="Skip dependency installation (assume already set up)",
+)
+@click.option(
+    "--reinstall",
+    is_flag=True,
+    help="Force reinstall all dependencies",
+)
+def web(
+    port_backend: int,
+    port_frontend: int,
+    no_browser: bool,
+    skip_setup: bool,
+    reinstall: bool,
+):
+    """
+    Launch the MEGAPROMPT web application.
+    
+    Automatically sets up and launches both backend (Django) and frontend (Next.js) servers.
+    Opens the web app in your default browser.
+    """
+    from megaprompt.cli.web_command import (
+        check_node_installed,
+        check_npm_installed,
+        check_python_version,
+        find_available_port,
+        setup_backend,
+        setup_frontend,
+        start_backend_server,
+        start_frontend_server,
+        wait_for_server,
+    )
+    import webbrowser
+    import time
+    import sys
+    from pathlib import Path
+
+    # Check Python version
+    if not check_python_version():
+        sys.exit(1)
+
+    # Check Node.js
+    node_ok, node_version = check_node_installed()
+    if not node_ok:
+        if node_version:
+            click.echo(f"Error: Node.js 18+ required, found {node_version}", err=True)
+        else:
+            click.echo("Error: Node.js not found. Install Node.js 18+ from https://nodejs.org/", err=True)
+        sys.exit(1)
+    click.echo(f"✓ Node.js {node_version} found")
+
+    # Check npm
+    if not check_npm_installed():
+        click.echo("Error: npm not found. Install npm (comes with Node.js)", err=True)
+        sys.exit(1)
+    click.echo("✓ npm found")
+
+    # Find available ports
+    try:
+        port_backend = find_available_port(port_backend)
+        port_frontend = find_available_port(port_frontend)
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    # Get webapp directory
+    project_root = Path(__file__).parent.parent.parent.parent
+    webapp_dir = project_root / "webapp"
+
+    # Setup backend
+    click.echo("\n=== Setting up backend ===")
+    if not setup_backend(webapp_dir, skip_setup, reinstall):
+        sys.exit(1)
+
+    # Setup frontend
+    click.echo("\n=== Setting up frontend ===")
+    if not setup_frontend(webapp_dir, skip_setup, reinstall):
+        sys.exit(1)
+
+    # Start servers
+    click.echo("\n=== Starting servers ===")
+    backend_dir = webapp_dir / "backend"
+    frontend_dir = webapp_dir / "frontend"
+
+    backend_process = start_backend_server(backend_dir, port_backend)
+    if not backend_process:
+        sys.exit(1)
+
+    frontend_process = start_frontend_server(frontend_dir, port_frontend)
+    if not frontend_process:
+        backend_process.terminate()
+        sys.exit(1)
+
+    # Wait for servers to be ready
+    click.echo("\nWaiting for servers to be ready...")
+    frontend_url = f"http://localhost:{port_frontend}"
+    if wait_for_server(frontend_url, timeout=30):
+        click.echo(f"\n✓ Web app is ready!")
+        click.echo(f"\nAccess the web app at: {frontend_url}")
+        click.echo(f"Backend API at: http://localhost:{port_backend}")
+        click.echo("\nPress Ctrl+C to stop the servers")
+
+        # Open browser
+        if not no_browser:
+            try:
+                webbrowser.open(frontend_url)
+            except Exception:
+                pass
+
+        # Wait for user interrupt
+        try:
+            while True:
+                time.sleep(1)
+                # Check if processes are still running
+                if backend_process.poll() is not None:
+                    click.echo("\nBackend server stopped unexpectedly", err=True)
+                    break
+                if frontend_process.poll() is not None:
+                    click.echo("\nFrontend server stopped unexpectedly", err=True)
+                    break
+        except KeyboardInterrupt:
+            click.echo("\n\nStopping servers...")
+            backend_process.terminate()
+            frontend_process.terminate()
+            backend_process.wait()
+            frontend_process.wait()
+            click.echo("✓ Servers stopped")
+    else:
+        click.echo(f"Error: Frontend server did not become ready in time", err=True)
+        backend_process.terminate()
+        frontend_process.terminate()
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()
 
