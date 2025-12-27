@@ -38,9 +38,6 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
-gui = [
-    "PyQt6>=6.6.0",
-]
 
 [project.scripts]
 megaprompt = "megaprompt.cli.main:main"

@@ -1069,41 +1069,6 @@ def analyze(
         sys.exit(1)
 
 
-@main.command()
-def ui():
-    """
-    Launch interactive desktop GUI.
-    
-    Opens a user-friendly PyQt6 desktop application with access to all MEGAPROMPT functions.
-    Features a dark theme with vibrant red/green/yellow color scheme and rounded window edges.
-    
-    The GUI provides:
-      - Generate mega-prompts with full configuration options
-      - Batch processing for multiple files
-      - Codebase analysis
-      - Configuration management
-      - Checkpoint viewing and management
-      - Cache statistics and management
-      - Help and documentation
-    """
-    try:
-        from megaprompt.gui import run_gui
-        run_gui()
-    except ImportError as e:
-        click.echo(
-            "Error: PyQt6 is required for UI mode. Install it with:\n"
-            "  pip install 'megaprompt[gui]'",
-            err=True
-        )
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"Error launching UI: {e}", err=True)
-        if "--verbose" in sys.argv or "-v" in sys.argv:
-            import traceback
-            click.echo(traceback.format_exc(), err=True)
-        sys.exit(1)
-
-
 if __name__ == "__main__":
     main()
 

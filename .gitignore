@@ -53,3 +53,8 @@ output.*
 .DS_Store
 Thumbs.db
 
+
+#cursor
+.cursor/
+node_modules
+
