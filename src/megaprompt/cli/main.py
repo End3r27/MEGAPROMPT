@@ -180,6 +180,18 @@ def main():
     help="Path to missing systems JSON file to augment the prompt with",
 )
 @click.option(
+    "--from-idea",
+    type=int,
+    default=None,
+    help="Use idea #N from last brainstorm JSON file (use with --idea-file)",
+)
+@click.option(
+    "--idea-file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    default=None,
+    help="Path to brainstorm JSON output file (required with --from-idea)",
+)
+@click.option(
     "--log-level",
     default="INFO",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
@@ -224,6 +236,8 @@ def generate(
     interactive: bool,
     yes: bool,
     augment: str | None,
+    from_idea: int | None,
+    idea_file: str | None,
 ):
     """
     Generate mega-prompt from input file or stdin.
@@ -304,17 +318,57 @@ def generate(
         # Still prompt for critical missing config
         config_obj = prompt_missing_config(config_obj)
 
-    # Read input
-    if input_source == "-":
-        user_prompt = sys.stdin.read()
-    else:
-        input_path = Path(input_source)
-        if not input_path.exists():
-            click.echo(f"Error: Input file not found: {input_source}", err=True)
-            click.echo(f"  Current directory: {Path.cwd()}", err=True)
-            click.echo(f"  Tip: Use absolute path or check file exists", err=True)
+    # Handle --from-idea flag
+    if from_idea is not None:
+        if not idea_file:
+            click.echo("Error: --idea-file is required when using --from-idea", err=True)
             sys.exit(1)
-        user_prompt = input_path.read_text(encoding="utf-8")
+        
+        idea_path = Path(idea_file)
+        if not idea_path.exists():
+            click.echo(f"Error: Idea file not found: {idea_file}", err=True)
+            sys.exit(1)
+        
+        try:
+            from megaprompt.schemas.brainstorm import BrainstormResult
+            
+            idea_data = json.loads(idea_path.read_text(encoding="utf-8"))
+            brainstorm_result = BrainstormResult.model_validate(idea_data)
+            
+            if from_idea < 1 or from_idea > len(brainstorm_result.ideas):
+                click.echo(f"Error: Idea index {from_idea} out of range (1-{len(brainstorm_result.ideas)})", err=True)
+                sys.exit(1)
+            
+            idea = brainstorm_result.ideas[from_idea - 1]  # Convert to 0-based index
+            
+            # Convert idea to prompt format
+            user_prompt = f"{idea.name}\n\n{idea.tagline}\n\n"
+            user_prompt += "Core Loop:\n"
+            for step in idea.core_loop:
+                user_prompt += f"- {step}\n"
+            user_prompt += "\nKey Systems:\n"
+            for system in idea.key_systems:
+                user_prompt += f"- {system}\n"
+            user_prompt += f"\nUnique Twist: {idea.unique_twist}\n"
+            user_prompt += f"\nTechnical Challenge: {idea.technical_challenge}\n"
+            
+            if verbose:
+                click.echo(f"Using idea #{from_idea}: {idea.name}", err=True)
+        except Exception as e:
+            click.echo(f"Error loading idea: {e}", err=True)
+            sys.exit(1)
+    else:
+        # Read input normally
+        if input_source == "-":
+            user_prompt = sys.stdin.read()
+        else:
+            input_path = Path(input_source)
+            if not input_path.exists():
+                click.echo(f"Error: Input file not found: {input_source}", err=True)
+                click.echo(f"  Current directory: {Path.cwd()}", err=True)
+                click.echo(f"  Tip: Use absolute path or check file exists", err=True)
+                sys.exit(1)
+            user_prompt = input_path.read_text(encoding="utf-8")
 
     if not user_prompt.strip():
         click.echo("Error: Input is empty", err=True)
@@ -534,6 +588,194 @@ def generate(
             click.echo("\nFull traceback:", err=True)
             click.echo(traceback.format_exc(), err=True)
 
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("input_source", type=click.Path(exists=False))
+@click.option(
+    "--count",
+    "-c",
+    type=int,
+    default=8,
+    help="Number of ideas to generate (default: 8)",
+)
+@click.option(
+    "--domain",
+    help="Bias the idea space (e.g., 'gamedev', 'web', 'ai')",
+)
+@click.option(
+    "--depth",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default="medium",
+    help="How detailed each idea is (default: medium)",
+)
+@click.option(
+    "--diversity",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default="medium",
+    help="How far ideas can drift from each other (default: medium)",
+)
+@click.option(
+    "--constraints",
+    help="Comma-separated constraints (e.g., 'local-ai,offline,deterministic')",
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    help="Output format (default: markdown)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(writable=True),
+    default=None,
+    help="Output file (default: stdout)",
+)
+@click.option(
+    "--compare-with",
+    help="Path to codebase for feasibility analysis (future feature)",
+)
+@click.option(
+    "--persona",
+    help="Persona to use (e.g., 'game-designer', 'systems-engineer') (future feature)",
+)
+@click.option(
+    "--provider",
+    "-p",
+    type=click.Choice(["ollama", "qwen", "gemini", "openrouter", "auto"], case_sensitive=False),
+    default="auto",
+    help="LLM provider (default: auto)",
+)
+@click.option(
+    "--model",
+    "-m",
+    default=None,
+    help="Model name (provider-specific)",
+)
+@click.option(
+    "--temperature",
+    "-t",
+    type=float,
+    default=0.7,
+    help="Temperature for generation (default: 0.7 for creativity)",
+)
+@click.option(
+    "--api-key",
+    default=None,
+    help="API key (or use environment variables)",
+)
+@click.option(
+    "--base-url",
+    default=None,
+    help="Base URL (provider-specific)",
+)
+@click.option(
+    "--verbose/--no-verbose",
+    "-v/--no-v",
+    default=True,
+    help="Show progress (default: enabled)",
+)
+def brainstorm(
+    input_source: str,
+    count: int,
+    domain: str | None,
+    depth: str,
+    diversity: str,
+    constraints: str | None,
+    output_format: str,
+    output: str | None,
+    compare_with: str | None,
+    persona: str | None,
+    provider: str,
+    model: str | None,
+    temperature: float,
+    api_key: str | None,
+    base_url: str | None,
+    verbose: bool,
+):
+    """
+    Generate multiple high-quality project ideas from a vague prompt.
+    
+    Transform a vague or medium prompt into N well-structured project ideas,
+    each already decomposed enough to evaluate or immediately compile into a mega-prompt.
+    
+    INPUT_SOURCE can be a file path or '-' for stdin.
+    
+    Examples:
+    
+      # Generate 8 ideas from a prompt
+      megaprompt brainstorm "AI + simulation game" --count 8
+      
+      # Generate ideas with constraints
+      megaprompt brainstorm idea.txt --constraints local-ai,offline,deterministic
+      
+      # Output as JSON for machine processing
+      megaprompt brainstorm "web app" --format json -o ideas.json
+    """
+    from megaprompt.cli.brainstorm_formatters import format_brainstorm_output
+    from megaprompt.core.brainstorm_pipeline import BrainstormPipeline
+
+    # Read input
+    if input_source == "-":
+        seed_prompt = sys.stdin.read()
+    else:
+        input_path = Path(input_source)
+        if not input_path.exists():
+            click.echo(f"Error: Input file not found: {input_source}", err=True)
+            sys.exit(1)
+        seed_prompt = input_path.read_text(encoding="utf-8")
+
+    if not seed_prompt.strip():
+        click.echo("Error: Input is empty", err=True)
+        sys.exit(1)
+
+    # Parse constraints
+    constraints_list = None
+    if constraints:
+        constraints_list = [c.strip() for c in constraints.split(",") if c.strip()]
+
+    # Create pipeline
+    try:
+        pipeline = BrainstormPipeline(
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            api_key=api_key,
+            base_url=base_url,
+        )
+
+        # Run brainstorm
+        result = pipeline.brainstorm(
+            seed_prompt=seed_prompt,
+            count=count,
+            domain=domain,
+            depth=depth,
+            diversity=diversity,
+            constraints=constraints_list,
+            verbose=verbose,
+        )
+
+        # Format output
+        output_text = format_brainstorm_output(result, output_format)
+
+        # Write output
+        if output:
+            output_path = Path(output)
+            output_path.write_text(output_text, encoding="utf-8")
+            if verbose:
+                click.echo(f"✓ Ideas written to: {output_path}")
+        else:
+            click.echo(output_text)
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        if verbose:
+            import traceback
+            click.echo(traceback.format_exc(), err=True)
         sys.exit(1)
 
 
@@ -1066,160 +1308,6 @@ def analyze(
             traceback.print_exc()
         else:
             click.echo(f"  Tip: Run with --verbose to see full error details", err=True)
-        sys.exit(1)
-
-
-@main.command()
-@click.option(
-    "--port-backend",
-    type=int,
-    default=8000,
-    help="Backend server port (default: 8000)",
-)
-@click.option(
-    "--port-frontend",
-    type=int,
-    default=3000,
-    help="Frontend server port (default: 3000)",
-)
-@click.option(
-    "--no-browser",
-    is_flag=True,
-    help="Don't open browser automatically",
-)
-@click.option(
-    "--skip-setup",
-    is_flag=True,
-    help="Skip dependency installation (assume already set up)",
-)
-@click.option(
-    "--reinstall",
-    is_flag=True,
-    help="Force reinstall all dependencies",
-)
-def web(
-    port_backend: int,
-    port_frontend: int,
-    no_browser: bool,
-    skip_setup: bool,
-    reinstall: bool,
-):
-    """
-    Launch the MEGAPROMPT web application.
-    
-    Automatically sets up and launches both backend (Django) and frontend (Next.js) servers.
-    Opens the web app in your default browser.
-    """
-    from megaprompt.cli.web_command import (
-        check_node_installed,
-        check_npm_installed,
-        check_python_version,
-        find_available_port,
-        setup_backend,
-        setup_frontend,
-        start_backend_server,
-        start_frontend_server,
-        wait_for_server,
-    )
-    import webbrowser
-    import time
-    import sys
-    from pathlib import Path
-
-    # Check Python version
-    if not check_python_version():
-        sys.exit(1)
-
-    # Check Node.js
-    node_ok, node_version = check_node_installed()
-    if not node_ok:
-        if node_version:
-            click.echo(f"Error: Node.js 18+ required, found {node_version}", err=True)
-        else:
-            click.echo("Error: Node.js not found. Install Node.js 18+ from https://nodejs.org/", err=True)
-        sys.exit(1)
-    click.echo(f"✓ Node.js {node_version} found")
-
-    # Check npm
-    if not check_npm_installed():
-        click.echo("Error: npm not found. Install npm (comes with Node.js)", err=True)
-        sys.exit(1)
-    click.echo("✓ npm found")
-
-    # Find available ports
-    try:
-        port_backend = find_available_port(port_backend)
-        port_frontend = find_available_port(port_frontend)
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-    # Get webapp directory
-    project_root = Path(__file__).parent.parent.parent.parent
-    webapp_dir = project_root / "webapp"
-
-    # Setup backend
-    click.echo("\n=== Setting up backend ===")
-    if not setup_backend(webapp_dir, skip_setup, reinstall):
-        sys.exit(1)
-
-    # Setup frontend
-    click.echo("\n=== Setting up frontend ===")
-    if not setup_frontend(webapp_dir, skip_setup, reinstall):
-        sys.exit(1)
-
-    # Start servers
-    click.echo("\n=== Starting servers ===")
-    backend_dir = webapp_dir / "backend"
-    frontend_dir = webapp_dir / "frontend"
-
-    backend_process = start_backend_server(backend_dir, port_backend)
-    if not backend_process:
-        sys.exit(1)
-
-    frontend_process = start_frontend_server(frontend_dir, port_frontend)
-    if not frontend_process:
-        backend_process.terminate()
-        sys.exit(1)
-
-    # Wait for servers to be ready
-    click.echo("\nWaiting for servers to be ready...")
-    frontend_url = f"http://localhost:{port_frontend}"
-    if wait_for_server(frontend_url, timeout=30):
-        click.echo(f"\n✓ Web app is ready!")
-        click.echo(f"\nAccess the web app at: {frontend_url}")
-        click.echo(f"Backend API at: http://localhost:{port_backend}")
-        click.echo("\nPress Ctrl+C to stop the servers")
-
-        # Open browser
-        if not no_browser:
-            try:
-                webbrowser.open(frontend_url)
-            except Exception:
-                pass
-
-        # Wait for user interrupt
-        try:
-            while True:
-                time.sleep(1)
-                # Check if processes are still running
-                if backend_process.poll() is not None:
-                    click.echo("\nBackend server stopped unexpectedly", err=True)
-                    break
-                if frontend_process.poll() is not None:
-                    click.echo("\nFrontend server stopped unexpectedly", err=True)
-                    break
-        except KeyboardInterrupt:
-            click.echo("\n\nStopping servers...")
-            backend_process.terminate()
-            frontend_process.terminate()
-            backend_process.wait()
-            frontend_process.wait()
-            click.echo("✓ Servers stopped")
-    else:
-        click.echo(f"Error: Frontend server did not become ready in time", err=True)
-        backend_process.terminate()
-        frontend_process.terminate()
         sys.exit(1)
 
 

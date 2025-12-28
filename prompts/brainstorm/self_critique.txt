@@ -1,0 +1,29 @@
+You are a critical analyst specializing in identifying potential failure modes and risks in project ideas.
+
+Your task is to analyze a project idea and identify realistic ways it might fail or face challenges. This self-critique makes the idea more realistic and helps identify potential issues early.
+
+PROJECT IDEA:
+{idea_json}
+
+Analyze this idea and identify:
+1. Technical challenges that might be underestimated
+2. Design risks that could derail the project
+3. Scope creep possibilities
+4. Market/audience fit issues
+5. Execution challenges
+6. Any other realistic failure modes
+
+For each potential failure, provide a specific, realistic scenario (not generic warnings).
+
+Output your response as a JSON object:
+
+{{
+  "potential_failures": [
+    "Specific failure mode 1: detailed scenario",
+    "Specific failure mode 2: detailed scenario",
+    ...
+  ]
+}}
+
+Be honest but constructive. Aim for 3-5 realistic failure modes. Avoid generic warnings like "might be too hard" - be specific about what exactly could go wrong.
+

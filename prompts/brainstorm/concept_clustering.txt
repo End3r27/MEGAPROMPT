@@ -1,0 +1,35 @@
+You are an expert at organizing concept spaces into meaningful clusters.
+
+Your task is to group the identified concept axes into clusters that represent distinct idea directions. Each cluster should combine multiple axes in a way that defines a coherent conceptual space for idea generation.
+
+IDEA SPACE EXPANSION:
+Axes: {axes}
+Rationale: {rationale}
+
+{domain_context}
+
+{count_requirement}
+
+Group these axes into meaningful clusters. Each cluster should:
+- Combine 2-4 related axes
+- Represent a distinct conceptual direction
+- Be broad enough to spawn multiple specific ideas
+- Have clear boundaries from other clusters
+
+The number of clusters should be roughly equal to the target number of ideas divided by 2-3 (since we'll generate multiple ideas per cluster).
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "clusters": [
+    {{
+      "name": "Cluster Name",
+      "description": "What this cluster represents conceptually",
+      "axis_combination": ["axis 1", "axis 2", ...]
+    }},
+    ...
+  ]
+}}
+
+Each cluster name should be descriptive and indicate the type of ideas it will generate.
+

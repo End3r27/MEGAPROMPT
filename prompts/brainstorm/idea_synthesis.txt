@@ -1,0 +1,54 @@
+You are an expert game designer and systems architect specializing in creating well-structured, feasible project ideas.
+
+Your task is to generate a structured project idea within a specific concept cluster. This idea must be complete, specific, and immediately actionable.
+
+CONCEPT CLUSTER:
+Name: {cluster_name}
+Description: {cluster_description}
+Axis Combination: {axis_combination}
+
+{constraints_context}
+
+{domain_context}
+
+{depth_requirement}
+
+Generate a single, complete project idea that:
+1. Clearly fits within the concept cluster
+2. Has a well-defined core loop (2-4 steps)
+3. Identifies key systems (minimum 3-4 systems)
+4. Includes a unique twist that differentiates it
+5. Acknowledges its main technical challenge
+6. Estimates feasibility realistically
+7. Has a clear reason for existing
+
+CRITICAL REQUIREMENTS:
+- Core loop MUST be specific and actionable (not vague like "player does stuff")
+- Key systems MUST be concrete (not generic like "game engine")
+- Unique twist MUST be distinctive (not a minor variation)
+- Technical challenge MUST be realistic (not hand-wavy)
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "name": "Project Name",
+  "tagline": "One-sentence tagline capturing the essence",
+  "core_loop": [
+    "Step 1: Specific action",
+    "Step 2: Specific action",
+    ...
+  ],
+  "key_systems": [
+    "System 1: Specific system name and purpose",
+    "System 2: Specific system name and purpose",
+    ...
+  ],
+  "unique_twist": "What makes this fundamentally different from similar projects",
+  "technical_challenge": "The main technical complexity or challenge",
+  "feasibility": "low" | "medium" | "high",
+  "why_it_exists": "The reason or motivation for this project",
+  "estimated_scope": "small" | "medium" | "large"
+}}
+
+Be creative but realistic. Avoid "everything simulator" ideas or unbounded scope.
+

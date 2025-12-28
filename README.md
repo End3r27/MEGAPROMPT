@@ -4,10 +4,11 @@ Transform messy human prompts into structured, deterministic mega-prompts optimi
 
 ## Overview
 
-Mega-Prompt Generator provides two powerful capabilities:
+Mega-Prompt Generator provides three powerful capabilities:
 
-1. **Mega-Prompt Generation**: A 5-stage pipeline that progressively refines user prompts into structured mega-prompts
-2. **Codebase Analysis**: Deep analysis of existing codebases to identify system holes, architectural risks, and enhancement opportunities
+1. **Brainstorm**: Transform vague prompts into multiple high-quality, well-structured project ideas
+2. **Mega-Prompt Generation**: A 5-stage pipeline that progressively refines user prompts into structured mega-prompts
+3. **Codebase Analysis**: Deep analysis of existing codebases to identify system holes, architectural risks, and enhancement opportunities
 
 ### Mega-Prompt Generation Pipeline
 
@@ -27,6 +28,23 @@ The analysis system uses a systems-thinking approach to identify:
 - **Intent Drift**: Discrepancies between original design and implementation
 
 The analysis combines static code scanning (multi-language parsing) with AI-powered architectural inference to provide actionable insights without code rewriting.
+
+### Brainstorm Pipeline
+
+Transform vague or medium prompts into multiple structured project ideas through a multi-stage pipeline:
+
+```
+Seed Prompt → Idea Space Expansion → Concept Clustering → Idea Synthesis 
+→ Quality Enforcement → Deduplication → Self-Critique → Final Ideas
+```
+
+Each idea includes:
+- **Core Loop**: Specific, actionable gameplay/interaction steps
+- **Key Systems**: Concrete systems required for implementation
+- **Unique Twist**: What makes the idea distinctive
+- **Technical Challenge**: Main technical complexity
+- **Feasibility**: Realistic feasibility assessment (low/medium/high)
+- **Potential Failures**: Self-critique identifying realistic failure modes
 
 ## Installation
 
@@ -73,6 +91,38 @@ After installation, you'll need to configure your LLM provider. See the [Environ
 
 ## Usage
 
+### Brainstorm Project Ideas
+
+The `brainstorm` command transforms vague prompts into multiple high-quality, well-structured project ideas:
+
+```bash
+# Generate 8 ideas from a prompt (default)
+megaprompt brainstorm "AI + simulation game" --count 8
+
+# Generate ideas with constraints
+megaprompt brainstorm idea.txt --constraints local-ai,offline,deterministic
+
+# Generate with domain bias
+megaprompt brainstorm "web application" --domain web --count 12
+
+# Control diversity and depth
+megaprompt brainstorm "mobile game" --diversity high --depth high
+
+# Output as JSON for machine processing
+megaprompt brainstorm "web app" --format json -o ideas.json
+
+# Generate from stdin
+echo "AI-powered productivity tool" | megaprompt brainstorm -
+```
+
+The brainstorm pipeline:
+1. **Idea Space Expansion** - Identifies concept axes (dimensions of variation) to ensure diversity
+2. **Concept Clustering** - Groups axes into idea buckets
+3. **Idea Synthesis** - Generates structured ideas per cluster with strict schema validation
+4. **Quality Enforcement** - Validates completeness, rejects vague/unbounded ideas
+5. **Deduplication** - Removes similar ideas based on core loop, systems, and unique twist
+6. **Self-Critique** - Adds realistic failure mode analysis to each idea
+
 ### Generate Mega-Prompts
 
 ```bash
@@ -92,6 +142,9 @@ megaprompt generate input.txt -o output.md --provider auto --model qwen-plus --v
 
 # Augment prompt with missing systems from analysis
 megaprompt generate idea.txt --augment missing_systems.json
+
+# Generate mega-prompt from a brainstorm idea
+megaprompt generate input.txt --from-idea 2 --idea-file ideas.json
 ```
 
 ### Analyze Codebases
@@ -195,6 +248,22 @@ The codebase scanner includes advanced features for comprehensive analysis:
 
 ## Options
 
+### Brainstorm Command Options
+
+- `--count/-c`: Number of ideas to generate (default: 8)
+- `--domain`: Bias the idea space (e.g., 'gamedev', 'web', 'ai')
+- `--depth`: How detailed each idea is - `low`, `medium`, `high` (default: `medium`)
+- `--diversity`: How far ideas can drift from each other - `low`, `medium`, `high` (default: `medium`)
+- `--constraints`: Comma-separated constraints (e.g., 'local-ai,offline,deterministic')
+- `--format/-f`: Output format - `markdown` or `json` (default: `markdown`)
+- `--output/-o`: Output file (default: stdout)
+- `--provider/-p`: LLM provider (same as generate command)
+- `--model/-m`: Model name (provider-specific)
+- `--temperature/-t`: Temperature for generation (default: 0.7 for creativity)
+- `--api-key`: API key (or use environment variables)
+- `--base-url`: Base URL (provider-specific)
+- `--verbose/-v`: Show progress (default: enabled)
+
 ### Generate Command Options
 
 - `--provider/-p`: LLM provider - `openrouter`, `ollama`, `qwen`, `gemini`, or `auto` (default: `auto` - auto-detects available provider)
@@ -207,6 +276,8 @@ The codebase scanner includes advanced features for comprehensive analysis:
 - `--base-url`: Base URL (provider-specific, not used for Gemini)
 - `--api-key`: API key for OpenRouter, Qwen, or Gemini provider (or use `OPENROUTER_API_KEY`/`QWEN_API_KEY`/`GEMINI_API_KEY` env var)
 - `--augment`: Path to missing systems JSON file to augment the prompt with (from `analyze --export`)
+- `--from-idea`: Use idea #N from brainstorm JSON file (use with `--idea-file`)
+- `--idea-file`: Path to brainstorm JSON output file (required with `--from-idea`)
 
 ### Analyze Command Options
 
@@ -480,17 +551,30 @@ The analysis system uses a 4-phase pipeline:
 
 ### Integration
 
-The analysis and generation systems integrate seamlessly:
+The brainstorm, analysis, and generation systems integrate seamlessly:
 
 ```bash
-# Analyze codebase to find missing systems
+# Brainstorm → Generate workflow
+# 1. Generate multiple ideas from a vague prompt
+megaprompt brainstorm "AI simulation game" --count 8 -o ideas.json
+
+# 2. Generate mega-prompt from a specific idea
+megaprompt generate input.txt --from-idea 2 --idea-file ideas.json -o mega-prompt.md
+
+# Analyze → Generate workflow
+# 1. Analyze codebase to find missing systems
 megaprompt analyze ./project --export missing.json
 
-# Generate mega-prompt augmented with missing systems
+# 2. Generate mega-prompt augmented with missing systems
 megaprompt generate idea.txt --augment missing.json
+
+# Full workflow: Brainstorm → Analyze → Generate
+megaprompt brainstorm "web app" -o ideas.json
+megaprompt analyze ./existing-project --export missing.json
+megaprompt generate input.txt --from-idea 3 --idea-file ideas.json --augment missing.json
 ```
 
-This creates a closed loop: analyze what exists → identify gaps → generate prompts that address them.
+This creates a complete ideation-to-execution loop: brainstorm ideas → analyze existing code → generate prompts that bridge gaps.
 
 ## License
 

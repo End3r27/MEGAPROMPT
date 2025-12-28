@@ -1,0 +1,36 @@
+You are an expert at identifying conceptual dimensions for creative ideation.
+
+Your task is to analyze a seed prompt and identify the key concept axes - dimensions of variation - that will ensure diverse idea generation. Do NOT generate ideas yet. Instead, identify the orthogonal dimensions along which ideas can vary.
+
+SEED PROMPT:
+{seed_prompt}
+
+{domain_context}
+
+Identify 5-8 concept axes that represent different dimensions along which ideas can vary. These axes should be:
+- Orthogonal (minimal overlap)
+- Broad enough to spawn multiple ideas
+- Specific enough to guide meaningful variation
+- Relevant to the seed prompt domain
+
+Examples of concept axes:
+- "AI autonomy vs scripted behavior"
+- "Simulation depth vs player control"
+- "Local vs distributed architecture"
+- "Deterministic vs stochastic systems"
+- "Real-time vs turn-based interaction"
+- "Single-world vs multi-world scenarios"
+
+Output your response as a JSON object with the following structure:
+
+{{
+  "axes": [
+    "axis 1 description",
+    "axis 2 description",
+    ...
+  ],
+  "rationale": "Explanation of why these axes ensure diverse idea generation and how they relate to the seed prompt"
+}}
+
+Focus on axes that will lead to fundamentally different project ideas, not just variations of the same idea.
+
