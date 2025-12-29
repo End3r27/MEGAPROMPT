@@ -61,12 +61,6 @@ cd MEGAPROMPT
 pip install -e .
 ```
 
-Or install directly without cloning:
-
-```bash
-pip install git+https://github.com/End3r27/MEGAPROMPT.git
-```
-
 ### Option 2: Manual Installation
 
 If you've already downloaded the repository:
